@@ -11,17 +11,39 @@ def sql_start():
     cur = base.cursor()
     if base:
         print('Data base connected OK!')
-    base.execute('CREATE TABLE IF NOT EXISTS menu(img TEXT, name TEXT PRIMARY KEY, name_english TEXT, category TEXT, subcategory TEXT, description TEXT, quantity1 INTEGER, quantity2 INTEGER, quantity3 INTEGER, visibility CHAR, price FLOAT)')
+    base.execute('CREATE TABLE IF NOT EXISTS menu(img TEXT, name TEXT PRIMARY KEY, name_english TEXT, category TEXT, '
+                 'subcategory TEXT, description TEXT, quantity1 INTEGER, quantity2 INTEGER, quantity3 INTEGER, '
+                 'visibility CHAR, price FLOAT)')
+    base.execute(
+        'CREATE TABLE IF NOT EXISTS orders(number TEXT PRIMARY KEY, name_english TEXT, name TEXT, quantity INTEGER, '
+        'delivery_cost FLOAT, flower_cost FLOAT, pack_cost FLOAT, discount FLOAT, promo_code VARCHAR(32), '
+        'full_cost FLOAT, phone_client VARCHAR(15), name_tg_client VARCHAR(32), chat_id_client INTEGER, '
+        'phone_client2 VARCHAR(15), address TEXT, way_of_delivery TEXT, time_delivery TIMESTAMP, link_delivery TEXT, '
+        'comment_courier TEXT, comment_collector TEXT, message_id_client INTEGER, message_id_collector INTEGER,'
+        'status_order TEXT, step_collector TEXT, point_start_delivery TEXT, mark INTEGER)')
     base.commit()
 
 
-async def sql_add_command(state):
-    async with state.proxy() as data:
-        cur.execute('INSERT INTO menu(img, name, name_english, category, subcategory, description, quantity1, quantity2, quantity3, visibility, price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                    (str(data["photo"]), data["name"], data["name_english"], data["category"], data["subcategory"],
-                     data["description"], data["quantity1"], data["quantity2"], data["quantity3"],
-                     data["visibility"], data["price"]))
-        base.commit()
+async def sql_add_command(state, table_name='menu', number_order=None):
+    if table_name == 'menu':
+        async with state.proxy() as data:
+            cur.execute('INSERT INTO menu(img, name, name_english, category, subcategory, description, quantity1, quantity2,'
+                        ' quantity3, visibility, price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        (str(data["photo"]), data["name"], data["name_english"], data["category"], data["subcategory"],
+                         data["description"], data["quantity1"], data["quantity2"], data["quantity3"],
+                         data["visibility"], data["price"]))
+            base.commit()
+    else:
+        async with state.proxy() as data:
+            cur.execute(f'INSERT INTO {table_name}(number, name_english, name, quantity, delivery_cost, flower_cost, '
+                        f'pack_cost, discount, promo_code, full_cost, phone_client, name_tg_client, chat_id_client, '
+                        f'phone_client2, address, way_of_delivery, time_delivery, link_delivery, comment_courier, '
+                        f'comment_collector, message_id_client, message_id_collector, status_order, step_collector, '
+                        f'point_start_delivery, mark) '
+                        f'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        (number_order, data["name_english"], data["name"], data["quantity"], ))
+            base.commit()
+
 
 
 async def sql_read(message: types.Message):
@@ -72,8 +94,8 @@ async def sql_get_phot_and_address(name):
     return cur.execute('SELECT quantity1, quantity2, quantity3, img FROM menu WHERE name == ?', (name,)).fetchall()
 
 
-async def sql_update_data(name, column_name, new_value):
-    cur.execute(f"UPDATE menu SET {column_name} = ? WHERE name_english == ?", (new_value, name))
+async def sql_update_data(name, column_name, new_value, table_name='menu'):
+    cur.execute(f"UPDATE {table_name} SET {column_name} = ? WHERE name_english == ?", (new_value, name))
     base.commit()
 
 async def exel_upload(message: types.Message):

@@ -1,4 +1,8 @@
+import asyncio
+import re
+
 from aiogram.dispatcher import FSMContext, filters
+from aiogram.dispatcher.filters import IDFilter
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram import types, Dispatcher
@@ -8,16 +12,21 @@ from keyboards import kb_admin, kb_add_admin, kb_load_photo_admin, \
     inline_visibility_admin
 from data_base import sqlite_dp
 from data_base.sqlite_dp import sql_read_name_english, sql_get_name, sql_del,sql_update_data, exel_upload
-from handlers.other import set_admin_dell_commands, check_valid_text, set_admin_commands
+from handlers.other import set_admin_dell_commands, check_valid_text, set_admin_commands, delete_messages
+from parameters import admins
 
-import re
-
-
+admins_list = [value[0] for value in admins.values()]
 
 # Обработчик команды /export_data
 #@dp.message_handler(commands=['export_data'])
 async def process_export_data_command(message: types.Message):
     await exel_upload(message)
+
+
+#@dp.message_handler(IDFilter(admins_list), commands=['admin'])
+async def commands_Admin(message: types.Message):
+    await set_admin_commands(message)
+    await message.reply('Вы получили права администратора', reply_markup=kb_admin)
 
 
 class FSMAdmin(StatesGroup):
@@ -51,13 +60,19 @@ async def cancel_handler(message: types.Message, state: FSMContext):
     if current_state is None:
         return
     elif current_state == FSMAdmin.show_delete.state:
-        await state.finish()
+        async with state.proxy() as data:
+            asyncio.create_task(
+                delete_messages(message.chat.id, data['start_message_id'], message.message_id + 1, 4, 0))
         await message.reply('Хорошо, изменения не будут сохранены', reply_markup=kb_admin)
+        await state.finish()
         await set_admin_commands(message)
-        return
-    await state.finish()
-    await message.reply('OK', reply_markup=kb_admin)
-    await set_admin_commands(message)
+    else:
+        async with state.proxy() as data:
+            asyncio.create_task(
+                delete_messages(message.chat.id, data['start_message_id'], message.message_id + 1, 4, 0))
+        await message.reply('OK', reply_markup=kb_admin)
+        await state.finish()
+        await set_admin_commands(message)
 
 
 #Начало диалога загрузки нового пункта меню
@@ -66,12 +81,16 @@ async def cm_start(message : types.Message, state: FSMContext):
     await FSMAdmin.photo.set()
     async with state.proxy() as data:
         data['photo'] = list()
+        data['start_message_id'] = message.message_id
     await message.reply('Загрузи фото', reply_markup=kb_add_admin)
 
 
 #Выход из состояний загрузки фото
 #@dp.message_handler(state=FSMAdmin.photo, commands='загрузить')
 async def stop_load_photo(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['message_id_start'] = message.message_id
+
     await FSMAdmin.name.set()
     await bot.send_message(message.from_user.id, "Теперь введи название",
                            reply_markup=kb_add_admin)
@@ -203,10 +222,14 @@ async def load_price(message: types.Message, state: FSMContext):
         try:
             async with state.proxy() as data:
                 data['price'] = float(message.text)
-            async with state.proxy() as data:
-                await message.reply(str(data), reply_markup=kb_admin)
+
+                #await message.reply(str(data), reply_markup=kb_admin)
+                await message.answer(text="Товар добавлен", reply_markup=kb_admin)
+                asyncio.create_task(
+                    delete_messages(message.chat.id, data['start_message_id'], message.message_id + 1, 4, 0))
             await sqlite_dp.sql_add_command(state)
             await state.finish()
+
 
         except ValueError:
             await message.reply(f"Ошибка: {message.text} не является числом.\nЖду числа")
@@ -214,10 +237,12 @@ async def load_price(message: types.Message, state: FSMContext):
 
 #Начало диалога удаления  пункта меню
 #@dp.message_handler(commands='/Удалить_товар', state=None)
-async def cm_start_delete(message: types.Message):
+async def cm_start_delete(message: types.Message, state: FSMContext):
     await FSMAdmin.show_delete.set()
     await message.reply('через / выберите товар', reply_markup=kb_add_admin)
     await set_admin_dell_commands(message)
+    async with state.proxy() as data:
+        data['start_message_id'] = message.message_id
 
 
 #Показываем выбор удаления
@@ -250,16 +275,22 @@ async def cm_show_delete(message: types.Message):
 async def cm_delete(callback_query: types.CallbackQuery, state: FSMContext):
     await sql_del(callback_query.data.replace('del ', ''))
     await callback_query.answer(text=f"{callback_query.data.replace('del ', '')} удален.", show_alert=True)
+    async with state.proxy() as data:
+        asyncio.create_task(
+            delete_messages(callback_query.message.chat.id, data['start_message_id'],
+                            callback_query.message.message_id + 1, 4, 0))
     await state.finish()
     await callback_query.message.answer('вы вернулись в админскую панель!', reply_markup=kb_admin)
 
 
 #Начало диалога изменеия  пункта меню
 #@dp.message_handler(commands='/Изменить_товар', state=None)
-async def cm_start_change(message: types.Message):
+async def cm_start_change(message: types.Message, state: FSMContext):
     await FSMAdmin.show_change.set()
     await message.reply('через / выберите товар', reply_markup=kb_add_admin)
     await set_admin_dell_commands(message)
+    async with state.proxy() as data:
+        data['start_message_id'] = message.message_id
 
 
 #Показываем выбор изменения
@@ -313,6 +344,10 @@ async def cm_change(callback_query: types.CallbackQuery, state: FSMContext):
                 else:
                     await sql_update_data(name=data['name_change'], column_name=data['column_name'], new_value='Да')
 
+                asyncio.create_task(
+                    delete_messages(callback_query.message.chat.id, data['start_message_id'],
+                                    callback_query.message.message_id + 1, 5, 0))
+
             await callback_query.message.answer(text="Видиость изменена", reply_markup=kb_admin)
             await callback_query.answer()
             await state.finish()
@@ -340,8 +375,10 @@ async def cm_change_end(message: types.Message, state: FSMContext):
                 case 'price':
                     float(message.text)
             await sql_update_data(name=data['name_change'], column_name=data['column_name'], new_value=message.text)
-            await state.finish()
-            await message.answer('вы вернулись в админскую панель!', reply_markup=kb_admin)
+            asyncio.create_task(
+                delete_messages(message.chat.id, data['start_message_id'], message.message_id+1, 4, 0))
+        await state.finish()
+        await message.answer('вы вернулись в админскую панель!', reply_markup=kb_admin)
     except ValueError:
         await message.reply('не верный формат ввода, введи еще раз')
 
@@ -349,7 +386,9 @@ async def cm_change_end(message: types.Message, state: FSMContext):
 
 
 #Регистрируем хендлеры
-def register_handlers_clients(dp: Dispatcher):
+def register_handlers_admin(dp: Dispatcher):
+    dp.register_message_handler(commands_Admin, IDFilter(admins_list), commands=['admin'])
+
     dp.register_message_handler(cm_start, commands='Добавить_товар', state=None)
     dp.register_message_handler(cancel_handler, state="*", commands='отмена')
     dp.register_message_handler(cancel_handler, filters.Text(equals='отмена', ignore_case=True), state="*")
