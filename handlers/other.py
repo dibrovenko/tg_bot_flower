@@ -11,7 +11,7 @@ import phonenumbers
 from aiogram.dispatcher import FSMContext
 from create_bot import dp, bot
 from aiogram import types, Dispatcher
-from data_base.sqlite_dp import sql_read_name
+from data_base.sqlite_dp import get_positions_sql
 from aiogram.types import BotCommandScopeChat, InlineKeyboardButton, InlineKeyboardMarkup
 
 from dostavista.price import calculate_price_dostavista
@@ -98,12 +98,20 @@ async def find_best_way(destination: str):
 
 # Устанавливаем команды для удаления для конкретного чата (ID чата: 1234567890)
 async def set_admin_dell_commands(message: types.Message):
-    read = await sql_read_name()
+    names = []
     commands = []
-    for i, command in enumerate(read):
-        commands.append(types.BotCommand(command=command[1], description=command[0]))
-    scope = BotCommandScopeChat(chat_id=message.chat.id)
-    await bot.set_my_commands(commands=commands, scope=scope)
+    result = await get_positions_sql("name", "name_english", table_name="goods", condition="ORDER BY name_english")
+
+    if result is not None:
+        for ret in result:
+            names.append([ret[0], ret[1]])
+        for i, command in enumerate(names):
+            commands.append(types.BotCommand(command=command[1], description=command[0]))
+        scope = BotCommandScopeChat(chat_id=message.chat.id)
+        await bot.set_my_commands(commands=commands, scope=scope)
+
+    else:
+        await message.answer("ошибка")
 
 
 
@@ -112,7 +120,7 @@ async def set_admin_commands(message: types.Message):
         types.BotCommand(command="/start", description="перезапустить бота"),
         types.BotCommand(command="/client", description="клиенский интерфейс"),
         types.BotCommand(command="/collector", description="интерфейс сборщика"),
-        types.BotCommand(command="/export_data", description="получить exel таблицу данных")
+        types.BotCommand(command="/record_goods_exel", description="изменить данные товаров с Exel")
     ]
     scope = BotCommandScopeChat(chat_id=message.chat.id)
     await bot.set_my_commands(bot_commands, scope=scope)

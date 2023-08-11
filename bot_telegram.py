@@ -12,7 +12,7 @@ print(emoji.emojize(':thumbs_up:'))
 
 async def on_startup(_):
     print('Бот вышел в онлайн')
-    sqlite_dp.sql_start()
+    await sqlite_dp.sql_start()
 
 
 

@@ -1,102 +1,287 @@
+import asyncpg_listen
+import asyncpg
+import asyncio
 import sqlite3 as sq
 import re
 import pandas as pd
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from create_bot import dp, bot, types
+import os
+from dotenv import load_dotenv, find_dotenv
+
+# Flag variable to indicate if handle_notifications has been triggered
+notification_received = False
+
+async def connect_to_base():
+    load_dotenv(find_dotenv())
+    host = os.getenv('host_dp')
+    user = os.getenv('user_dp')
+    password = os.getenv('password_dp')
+    database = os.getenv('name_dp')
+    port = os.getenv('port_dp')
+
+    con = await asyncpg.connect(host=host, user=user, password=password, database=database, port=port)
+    return con
 
 
-def sql_start():
+async def sql_start():
     global base, cur
     base = sq.connect('flower_cool.db')
     cur = base.cursor()
-    if base:
-        print('Data base connected OK!')
-    base.execute('CREATE TABLE IF NOT EXISTS menu(img TEXT, name TEXT PRIMARY KEY, name_english TEXT, category TEXT, '
-                 'subcategory TEXT, description TEXT, quantity1 INTEGER, quantity2 INTEGER, quantity3 INTEGER, '
-                 'visibility CHAR, price FLOAT)')
-    base.execute(
-        'CREATE TABLE IF NOT EXISTS orders(number TEXT PRIMARY KEY, name_english TEXT, name TEXT, quantity INTEGER, '
+
+    con = await connect_to_base()
+    await con.execute(
+        'CREATE TABLE IF NOT EXISTS goods(img TEXT, name TEXT PRIMARY KEY, name_english TEXT,'
+        ' category TEXT, subcategory TEXT, description TEXT, quantity1 INTEGER, quantity2 INTEGER,'
+        ' quantity3 INTEGER, visibility CHAR(4), price FLOAT)'
+    )
+
+    await con.execute(
+        'CREATE TABLE IF NOT EXISTS orders(number UUID PRIMARY KEY, name_english TEXT, name TEXT, quantity INTEGER, '
         'delivery_cost FLOAT, flower_cost FLOAT, pack_cost FLOAT, discount FLOAT, promo_code VARCHAR(32), '
         'full_cost FLOAT, phone_client VARCHAR(15), name_tg_client VARCHAR(32), chat_id_client INTEGER, '
         'phone_client2 VARCHAR(15), address TEXT, way_of_delivery TEXT, time_delivery TIMESTAMP, link_delivery TEXT, '
         'comment_courier TEXT, comment_collector TEXT, message_id_client INTEGER, message_id_collector INTEGER,'
-        'status_order TEXT, step_collector TEXT, point_start_delivery TEXT, mark INTEGER)')
-    base.commit()
+        'status_order TEXT, step_collector TEXT, point_start_delivery TEXT, mark INTEGER)'
+    )
+    await con.close()
 
 
-async def sql_add_command(state, table_name='menu', number_order=None):
-    if table_name == 'menu':
-        async with state.proxy() as data:
-            cur.execute('INSERT INTO menu(img, name, name_english, category, subcategory, description, quantity1, quantity2,'
-                        ' quantity3, visibility, price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                        (str(data["photo"]), data["name"], data["name_english"], data["category"], data["subcategory"],
-                         data["description"], data["quantity1"], data["quantity2"], data["quantity3"],
-                         data["visibility"], data["price"]))
-            base.commit()
-    else:
-        async with state.proxy() as data:
-            cur.execute(f'INSERT INTO {table_name}(number, name_english, name, quantity, delivery_cost, flower_cost, '
-                        f'pack_cost, discount, promo_code, full_cost, phone_client, name_tg_client, chat_id_client, '
-                        f'phone_client2, address, way_of_delivery, time_delivery, link_delivery, comment_courier, '
-                        f'comment_collector, message_id_client, message_id_collector, status_order, step_collector, '
-                        f'point_start_delivery, mark) '
-                        f'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                        (number_order, data["name_english"], data["name"], data["quantity"], ))
-            base.commit()
+async def add_positions_sql(table_name: str, columns: list, values: list):
+    con = await connect_to_base()
+
+    try:
+        # Формируем SQL запрос для вставки новой строки
+        query = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES " \
+                f"({', '.join([f'${index + 1}' for index, _ in enumerate(values)])})"
+
+        # Выполняем запрос с переданными значениями
+        await con.execute(query, *values)
+
+        # Выполнение уведомления об изменении
+        if table_name == "goods":
+            await con.execute(f"NOTIFY update_goods, '{1}'")
+
+    except:
+        # Возврат значения по умолчанию в случае ошибки
+        return False
+
+    finally:
+        # Закрытие соединения с базой данных
+        await con.close()
+
+    return True
+
+
+async def get_positions_sql(*args: str, table_name: str, condition=None, condition_value=None):
+    con = await connect_to_base()
+    try:
+        # Формирование SQL-запроса
+        query = "SELECT "
+
+        # Добавление столбцов в запрос
+        query += ", ".join(args) + f" FROM {table_name}"
+
+        # Добавление условия в запрос (если оно указано)
+        if condition and condition_value:
+            query += " " + condition
+            result = await con.fetch(query, condition_value)
+
+        elif condition:
+            query += " " + condition
+            result = await con.fetch(query)
+
+        else:
+            result = await con.fetch(query)
+
+    except:
+        # Возврат значения по умолчанию в случае ошибки
+        return None
+
+    finally:
+        # Закрытие соединения с базой данных
+        await con.close()
+
+    return result
+
+
+async def del_positions_sql(table_name: str, condition: str, value: str):
+    con = await connect_to_base()
+    try:
+        # Формируем SQL запрос для вставки новой строки
+        query = f'DELETE FROM {table_name} {condition}'
+
+        # Выполняем запрос с переданными значениями
+        await con.execute(query, value)
+
+        # Выполнение уведомления об изменении
+        if table_name == "goods":
+            await con.execute(f"NOTIFY update_goods, '{1}'")
+
+    except:
+        # Возврат значения по умолчанию в случае ошибки
+        return False
+
+    finally:
+        # Закрытие соединения с базой данных
+        await con.close()
+
+    return True
+
+
+async def update_positions_sql(table_name: str, column_values: dict, condition=None):
+    con = await connect_to_base()
+    try:
+        # Формирование SQL-запроса для обновления данных
+        query = f"UPDATE {table_name} SET "
+
+        # Добавление значений столбцов для обновления
+        for column, value in column_values.items():
+            query += f"{column} = '{value}', "
+
+        # Удаление последней запятой и пробела из запроса
+        query = query[:-2]
+
+        # Добавление условия для обновления данных (если указано)
+        if condition:
+            query += f" {condition}"
+
+        # Выполнение SQL-запроса
+        await con.execute(query)
+        # Выполнение уведомления об изменении
+        if table_name == "goods":
+            await con.execute(f"NOTIFY update_goods, '{1}'")
+
+    except Exception as e:
+        print(f"Ошибка при обновлении данных: {str(e)}")
+        # Возврат значения по умолчанию в случае ошибки
+        return False
+
+    finally:
+        # Закрытие соединения с базой данных
+        await con.close()
+
+    return True
+
+
+async def handle_notifications(notification: asyncpg_listen.NotificationOrTimeout) -> None:
+    global notification_received
+    print(f"{notification} has been received")
+    notification_received = True
+
+
+async def notifications_start():
+    global notification_received
+    load_dotenv(find_dotenv())
+    host = os.getenv('host_dp')
+    user = os.getenv('user_dp')
+    password = os.getenv('password_dp')
+    database = os.getenv('name_dp')
+    port = os.getenv('port_dp')
+    listener = asyncpg_listen.NotificationListener(asyncpg_listen.connect_func(database=database, user=user,
+                                                                               password=password, host=host, port=port))
+    listener_task = asyncio.create_task(
+        listener.run(
+            {"update_goods": handle_notifications},
+            policy=asyncpg_listen.ListenPolicy.ALL,
+            notification_timeout=3600
+        )
+    )
+
+    try:
+        while not notification_received:
+            await asyncio.sleep(3)
+
+    except asyncio.CancelledError:
+        print("функция остановлена")
+        return True
+
+    except:
+        return False
+
+    finally:
+        listener_task.cancel()
+        notification_received = False
+
+    return False
+
+
+async def export_to_excel(table_name=None):
+    # Подключение к базе данных
+    conn = await connect_to_base()
+
+    try:
+        if not table_name:
+            # Укажите путь к файлу Excel, который нужно удалить
+            file_path = "Exel/data_goods.xlsx"
+
+            # Проверяем, существует ли файл
+            if os.path.exists(file_path):
+                # Удаляем файл
+                os.remove(file_path)
+
+            # Выполнение запроса к базе данных
+            query = 'SELECT name, name_english, price, quantity1, quantity2, quantity3, visibility FROM goods'
+            result = await conn.fetch(query)
+
+            # Создание DataFrame из результата запроса
+            df = pd.DataFrame(result, columns=['name', 'name_english', 'price', 'quantity1', 'quantity2', 'quantity3',
+                                               'visibility'])
+            # Экспорт DataFrame в Excel таблицу
+            df.to_excel(file_path, index=False)
+        else:
+            print()
+
+    except:
+        return False
+
+    finally:
+        # Закрытие соединения с базой данных
+        await conn.close()
+    return True
+
+
+async def update_database_from_excel():
+    # Подключение к базе данных
+    conn = await connect_to_base()
+
+    try:
+        # Чтение данных из Excel файла
+        df = pd.read_excel("Exel/data_goods.xlsx")
+
+        # Получение списка колонок из базы данных
+        columns = await conn.fetch(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'goods';")
+
+        # Обновление данных в базе данных по каждой колонке из Excel файла
+        for column in columns:
+            column_name = column['column_name']
+
+            if column_name in df.columns:
+                values = df[column_name].tolist()
+
+                # Обновление данных в базе данных с использованием параметризованного запроса
+                await conn.executemany(f'UPDATE goods SET {column_name} = $1 WHERE name = $2;',
+                                       zip(values, df['name'].tolist()))
+
+    except:
+        return False
+
+    finally:
+        # Закрытие соединения с базой данных
+        await conn.close()
+
+    return True
 
 
 
-async def sql_read(message: types.Message):
-
-    for ret in cur.execute('SELECT * FROM menu').fetchall():
-        caption = f'*{ret[1]}*\n_English_: *{ret[2]}*\n_Категория:_ *{ret[3]}*\n_Подкатегория:_ *{ret[4]}*\n_Описание:_ *{ret[5]}*' \
-                  f'\n_Количество на Калужском:_ *{ret[6]}*\n_Количество на Маяковском:_ *{ret[7]}*\n_Количество на Смольной:_ *{ret[8]}*' \
-                  f'\n_Видимость:_ *{ret[9]}*\n_Цена_ *{ret[-1]}*'
-        album = types.MediaGroup()
-        print()
-        matches = re.findall(r"'(.*?)'", ret[0])
-        for i, match in enumerate(matches):
-            if i == len(matches) - 1:
-                album.attach_photo(photo=match, caption=caption, parse_mode="Markdown")
-            else:
-                album.attach_photo(photo=match)
-
-        await message.answer_media_group(media=album)
 
 
-async def sql_read2():
-    return cur.execute('SELECT * FROM menu').fetchall()
 
 
-async def sql_read_name():
-    list_name = []
-    for ret in cur.execute('SELECT name, name_english FROM menu').fetchall():
-        list_name.append([ret[0], ret[1]])
-    return list_name
 
 
-async def sql_read_name_english():
-    list_name = []
-    for ret in cur.execute('SELECT name_english FROM menu').fetchall():
-        list_name.append(ret[0])
-    return list_name
 
 
-async def sql_del(data):
-    cur.execute('DELETE FROM menu WHERE name == ?', (data,))
-    base.commit()
-
-
-async def sql_get_name(data, message: types.Message):
-    return cur.execute('SELECT * FROM menu WHERE name_english == ?', (data,)).fetchall()
-
-async def sql_get_phot_and_address(name):
-    return cur.execute('SELECT quantity1, quantity2, quantity3, img FROM menu WHERE name == ?', (name,)).fetchall()
-
-
-async def sql_update_data(name, column_name, new_value, table_name='menu'):
-    cur.execute(f"UPDATE {table_name} SET {column_name} = ? WHERE name_english == ?", (new_value, name))
-    base.commit()
 
 async def exel_upload(message: types.Message):
 
@@ -114,21 +299,3 @@ async def exel_upload(message: types.Message):
         await bot.send_document(message.chat.id, file)
 
 
-
-async def get_quantity_by_name(name):
-
-    # Координаты точек складов
-    origin1 = '55.601010,37.471102'  # Москва, поселение Сосенское, Калужское шоссе, 22-й километр, 10
-    origin2 = '55.738667,37.658239'  # г. Москва, переулок Маяковского, дом 10, строение 6
-    origin3 = '55.860984,37.482708'  # Смольная улица, 24Гс6
-    origin_list = [origin1, origin2, origin3]
-
-    # Выполняем запрос к базе данных
-    row = cur.execute("SELECT quantity1, quantity2, quantity3 FROM menu WHERE name=?", (name,)).fetchall()
-    # Создаем словарь с данными из запроса
-    data_dict = {}
-
-    for i, origin in enumerate(origin_list):
-        data_dict[origin] = row[0][i]
-
-    return data_dict

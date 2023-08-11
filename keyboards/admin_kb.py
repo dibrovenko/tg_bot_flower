@@ -24,7 +24,6 @@ urlkb_delete_admin = InlineKeyboardMarkup(row_width=1)
 utlButton_delete = InlineKeyboardButton(text='delete', callback_data = 'удалить товар')
 urlkb_delete_admin.add(utlButton_delete)
 
-
 # Создаем инлайн-клавиатуру с тремя кнопками для категорий
 inline_kb_category_admin = InlineKeyboardMarkup(row_width=1)
 in1 = InlineKeyboardButton("Монобукеты", callback_data="Монобукеты")
@@ -40,6 +39,5 @@ for i in range(len(subcategory)):
 
 # Создаем инлайн-клавиатуру с  кнопками для видимости
 inline_visibility_admin = InlineKeyboardMarkup(row_width=2)
-visibility = ["Да", "Нет"]
-for i in range(len(visibility)):
-    inline_visibility_admin.insert(InlineKeyboardButton(visibility[i], callback_data=visibility[i]))
+inline_visibility_admin.insert(InlineKeyboardButton(text="Да", callback_data="Да"))
+inline_visibility_admin.insert(InlineKeyboardButton(text="Нет", callback_data="Нет"))

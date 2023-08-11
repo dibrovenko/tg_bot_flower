@@ -1,7 +1,9 @@
 import asyncio
+import uuid
 from datetime import datetime, timedelta
 import re
 import time
+import datetime as dt
 
 import phonenumbers
 from aiogram.dispatcher import FSMContext, filters
@@ -13,13 +15,12 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ContentTyp
 from create_bot import dp, bot, types
 from dostavista.price import calculate_price_dostavista
 from keyboards import kb_client, kb_client_registration, kb_client_registration_name, kb_admin
-from data_base import sqlite_dp
 
 from handlers.other import set_client_commands, set_admin_commands, delete_messages, find_best_way, delivery_time, \
     phone_send_messages, phone2_send_messages, comment_courier_send_messages, comment_collector_send_messages, \
     func_for_valid_phone_number, func_send_way_delivery, control_time_order, control_time_dostavista, \
     control_time_yandex, set_collectors_commands, set_client_commands2
-from data_base.sqlite_dp import sql_update_data, sql_get_phot_and_address, get_quantity_by_name
+from data_base.sqlite_dp import get_positions_sql, add_positions_sql
 from keyboards.client_kb import kb_client_registration_comment, kb_client_pay_inline, kb_client_order_inline, \
     kb_client_registration_start
 from keyboards.collector_kb import kb_collector
@@ -29,8 +30,10 @@ from yandex.cancellation_order import cancellation_order
 from yandex.confirmation_order import confirmation_order
 from parameters import admins, collectors
 
+
 admins_list = [value[0] for value in admins.values()]
 collector_list = [value[0] for value in collectors.values()]
+
 
 # @dp.message_handler(commands = ['start', 'help'])
 async def commands_start(message: types.Message):
@@ -57,7 +60,26 @@ async def commands_client(message: types.Message):
 
 # @dp.message_handler(commands = ['Меню'])
 async def commands_menu(message: types.Message):
-    await sqlite_dp.sql_read(message)
+    result = await get_positions_sql("*", table_name="goods")
+    if result is not None:
+
+        for ret in result:
+            caption = f'*{ret[1]}*\n_English_: *{ret[2]}*\n_Категория:_ *{ret[3]}*\n_Подкатегория:_ *{ret[4]}*\n_Описание:_ *{ret[5]}*' \
+                      f'\n_Количество на Калужском:_ *{ret[6]}*\n_Количество на Маяковском:_ *{ret[7]}*\n_Количество на Смольной:_ *{ret[8]}*' \
+                      f'\n_Видимость:_ *{ret[9]}*\n_Цена_ *{ret[-1]}*'
+            album = types.MediaGroup()
+            matches = re.findall(r"'(.*?)'", ret[0])
+            for i, match in enumerate(matches):
+                if i == len(matches) - 1:
+                    album.attach_photo(photo=match, caption=caption, parse_mode="Markdown")
+                else:
+                    album.attach_photo(photo=match)
+
+            await message.answer_media_group(media=album)
+
+    else:
+        await message.answer("ошибка")
+
 
 
 # @dp.message_handler(commands = ['поддержка'])
@@ -93,26 +115,41 @@ class TimeError(Exception):
 # Начало диалога регистрации
 # @dp.message_handler(commands='/Купить', state=None)
 async def cm_start_registration(message: types.Message, state: FSMContext):
-    available_points = ["Калужское", "Маяковского", "Смольная"]
-    name = 'Розы Silva Pink'
+    name_english = "rose_silva_pink"
+    name = full_cost_without_delivery = price = None
     quantity = 21
-    price = 200
     packaging_price = 150
-    full_cost_without_delivery = quantity * price + packaging_price
-    price_as_str = f'{quantity} × {price} + 150_(упаковка)_ = *{full_cost_without_delivery}* руб.'
-    # await message.answer(f'_ВАШ ЗАКАЗ_', parse_mode="Markdown", reply_markup=kb_client_registration)
-    for ret in await sql_get_phot_and_address(name):
-        caption = name + "\n" + price_as_str
-        album = types.MediaGroup()
-        matches = re.findall(r"'(.*?)'", ret[3])
+    available_points = []
+    points = ["Калужское", "Маяковского", "Смольная"]
+    result = await get_positions_sql("*", table_name="goods", condition="WHERE name_english = $1",
+                                     condition_value=name_english)
+    if result is not None:
 
-        for i, match in enumerate(matches):
-            if i == len(matches) - 1:
-                album.attach_photo(photo=match, caption=caption, parse_mode="Markdown")
-            else:
-                album.attach_photo(photo=match)
+        for ret in result:
+            name = ret[1]
+            name_english = ret[2]
+            price = int(ret[-1])
+            full_cost_without_delivery = quantity * price + packaging_price
+            price_as_str = f'{quantity} × {price} + 150_(упаковка)_ = *{full_cost_without_delivery}* руб.'
+            caption = name + "\n" + price_as_str
 
-        await message.answer_media_group(media=album)
+            for i in range(6, 9):
+                if ret[i] >= quantity:
+                    available_points.append(points[i - 6])
+            print(available_points)
+            album = types.MediaGroup()
+            matches = re.findall(r"'(.*?)'", ret[0])
+            for i, match in enumerate(matches):
+                if i == len(matches) - 1:
+                    album.attach_photo(photo=match, caption=caption, parse_mode="Markdown")
+                else:
+                    album.attach_photo(photo=match)
+
+            await message.answer_media_group(media=album)
+    else:
+        await message.answer("ошибка")
+        return
+
     await message.answer(text="Все верно?", reply_markup=InlineKeyboardMarkup().
                          insert(InlineKeyboardButton(f'Да, продолжить оформление', callback_data=f"Yes")).
                          add(InlineKeyboardButton(f'Нет, вернуться в корзину', callback_data=f"No")))
@@ -124,11 +161,14 @@ async def cm_start_registration(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['message_id_buy'] = data['message_id_start'] = message.message_id
         data['name'] = name  # название товара
-        data['name_english'] = name  # название товара
+        data['name_english'] = name_english  # название товара
         data['quantity'] = quantity
+        data["cost_flower"] = price
         data['full_cost_without_delivery'] = full_cost_without_delivery
         data['packaging_price'] = packaging_price
         data['available_points'] = available_points
+        data['discount'] = 500
+        data['promo_code'] = "test"
         if message.from_user["username"] is None:
             data['name_tg'] = message.from_user["id"]
         else:
@@ -457,9 +497,10 @@ async def cm_comment_collector_registration(message: types.Message, state: FSMCo
                 return
 
             async with state.proxy() as data:
+
                 if data['result_calculate_price_dostavista']['today'] == False:
-                   min_price_today = False
-                   start_time_today = None
+                    min_price_today = False
+                    start_time_today = None
 
                 else:
                     min_price_today = round(min([item[0] for item in
@@ -473,7 +514,6 @@ async def cm_comment_collector_registration(message: types.Message, state: FSMCo
 
                 else:
                     price_yandex = round(result_calculate_price_yandex[0])
-
                 data['result_calculate_price_yandex'] = result_calculate_price_yandex
                 min_price_tommorow = round(min([item[0] for item in
                                                 data['result_calculate_price_dostavista']['tomorrow'].values()]))
@@ -527,6 +567,7 @@ async def cm_way_of_delivery_registration(callback: types.CallbackQuery, state: 
                 await callback.answer()
                 data['way_of_delivery'] = callback.data
                 data["price_delivery_final"] = round(data['result_calculate_price_yandex'][0])
+                data["point_start_delivery"] = data['result_calculate_price_yandex'][1]
 
                 # формируе описание заказа
                 description = f'Ваш 📞: {data["phone"]} Получателя 📞: {data["phone2"]} Адрес: {data["address"]}' \
@@ -570,7 +611,7 @@ async def cm_way_of_delivery_registration(callback: types.CallbackQuery, state: 
                         ),
                         types.LabeledPrice(
                             label='Скидка',
-                            amount=-50000
+                            amount=-data['discount']*100
                         )
                     ],
                     provider_data=None,
@@ -684,11 +725,13 @@ async def cm_way_of_delivery_registration(callback: types.CallbackQuery, state: 
                                   timedelta(hours=2)).strftime("%H:%M")
                     data["price_delivery_final"] = \
                         round(data["result_calculate_price_dostavista"]["today"][start_time][0])
+                    data["point_start_delivery"] = data["result_calculate_price_dostavista"]["today"][start_time][1]
                 else:
                     start_time = (datetime.strptime(data['time_delivery'][:5], "%H:%M") -
                                   timedelta(hours=2)).strftime("%H:%M")
                     data["price_delivery_final"] = \
                         round(data["result_calculate_price_dostavista"]["tomorrow"][start_time][0])
+                    data["point_start_delivery"] = data["result_calculate_price_dostavista"]["tomorrow"][start_time][1]
 
                 #формируе описание заказа
                 description = f'Ваш 📞: {data["phone"]} Получателя 📞: {data["phone2"]} Адрес: {data["address"]} ' \
@@ -732,7 +775,7 @@ async def cm_way_of_delivery_registration(callback: types.CallbackQuery, state: 
                         ),
                         types.LabeledPrice(
                             label='Скидка',
-                            amount=-50000
+                            amount=-data['discount']*100
                         )
                     ],
                     provider_data=None,
@@ -809,21 +852,34 @@ async def successful_payment(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         if data['way_of_delivery'] == "Express":
             time = 'Время: ⚡️️как можно быстрее'
+            data["time_delivery_sql"] = datetime.now().replace(second=0, microsecond=0)
             try:
                 number_order = data['result_calculate_price_yandex'][2]
                 #подтерждаем заказ в yandex # asyncio.create_task(confirmation_order(id=number_order))
             except:
                 pass
 
-        else:
+        elif data['way_of_delivery'] == "Today":
+            data["time_delivery_sql"] = dt.datetime.combine(dt.date.today(),
+                                                            dt.time(int(data['time_delivery'][:2]),
+                                                                    int(data['time_delivery'][3:5])))
+            time = f'Время: сегодня {data["time_delivery"]}'
             try:
-                number_order = "u4884u494u489u984u89484848"
+                number_order = str(uuid.uuid4())
                 asyncio.create_task(cancellation_order(id=data['result_calculate_price_yandex'][2]))
             except:
                 pass
 
-            dict_for_way_of_delivery = {"Today": "сегодня", "tomorrow": "завтра"}
-            time = f'Время: {dict_for_way_of_delivery[data["way_of_delivery"]]} {data["time_delivery"]}'
+        else:
+            data["time_delivery_sql"] = dt.datetime.combine(dt.date.today() + dt.timedelta(days=1),
+                                                            dt.time(int(data['time_delivery'][:2]),
+                                                                    int(data['time_delivery'][3:5])))
+            time = f'Время: завтра {data["time_delivery"]}'
+            try:
+                number_order = str(uuid.uuid4())
+                asyncio.create_task(cancellation_order(id=data['result_calculate_price_yandex'][2]))
+            except:
+                pass
 
         comment_courier = "Нет инф. для курьера"
         comment_collector = "Нет инф. для сбощика"
@@ -842,9 +898,31 @@ async def successful_payment(message: types.Message, state: FSMContext):
                       '\nСсылка на доставку: https://yandex.ru/search/?text=номер+символ&lr=213&search_source=yaru_desktop_common' + \
                       '\n' + comment_courier + \
                       '\n' + comment_collector
-        print(data)
+
     msg = await bot.send_message(message.chat.id, text=description, reply_markup=kb_client_order_inline)
     await bot.pin_chat_message(chat_id=msg.chat.id, message_id=msg.message_id)
+
+    async with state.proxy() as data:
+
+        columns_sql = ["number", "name_english", "name", "quantity", "delivery_cost", "flower_cost", "pack_cost",
+                       "discount", "promo_code",  "full_cost", "phone_client", "name_tg_client", "chat_id_client",
+                       "phone_client2", "address", "way_of_delivery", "time_delivery", "link_delivery",
+                       "comment_courier", "comment_collector", "message_id_client", "message_id_collector",
+                       "status_order", "step_collector", "point_start_delivery", "mark"]
+        values_sql = [number_order, data["name_english"], data["name"], data["quantity"], data["price_delivery_final"],
+                      data["cost_flower"], data['packaging_price'], data['discount'], data['promo_code'],
+                      (data['full_cost_without_delivery'] - data['discount'] + data["price_delivery_final"]),
+                      data["phone"], data['name_tg'], message.chat.id, data["phone2"], data["address"],
+                      data["way_of_delivery"], data["time_delivery_sql"], "link", data["comment_courier"],
+                      data["comment_collector"], msg.message_id, msg.message_id, "new", "waiting",
+                      data["point_start_delivery"], None]
+
+        result_record = await add_positions_sql(table_name="orders", columns=columns_sql, values=values_sql)
+        global collectors
+        if result_record is False:
+            await bot.send_message(chat_id=collectors[data['point_start_delivery']][0],
+                                   text=f"Не записались данные, напишите админу\n\n{columns_sql} {values_sql}")
+
     await state.finish()
 
 
