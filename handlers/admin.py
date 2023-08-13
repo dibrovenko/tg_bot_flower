@@ -11,13 +11,37 @@ from create_bot import bot
 from keyboards import kb_admin, kb_add_admin, kb_load_photo_admin, inline_kb_category_admin, \
     inline_kb_subcategory_admin, subcategory, inline_visibility_admin
 
-from data_base.sqlite_dp import exel_upload, get_positions_sql, add_positions_sql, \
+from data_base.sqlite_dp import get_positions_sql, add_positions_sql, \
     del_positions_sql, update_positions_sql, export_to_excel, notifications_start, update_database_from_excel
 from handlers.other import set_admin_dell_commands, check_valid_text, set_admin_commands, delete_messages
 from parameters import admins
 
 admins_list = [value[0] for value in admins.values()]
 notifications_start_var = True
+
+
+# Обработчик команды /take_goods_exel
+# @dp.message_handler(commands=['take_goods_exel'])
+async def take_goods_exel(message: types.Message):
+    result = await export_to_excel("goods")
+    if result:
+        # Отправляем excel файл пользователю
+        with open('Exel/data.xlsx', 'rb') as file:
+            await bot.send_document(message.chat.id, file, reply_markup=kb_admin)
+    else:
+        await message.answer("ошибка на сервере", reply_markup=kb_admin)
+
+
+# Обработчик команды /take_orders_exel
+# @dp.message_handler(commands=['take_orders_exel'])
+async def take_orders_exel(message: types.Message):
+    result = await export_to_excel("orders")
+    if result:
+        # Отправляем excel файл пользователю
+        with open('Exel/data.xlsx', 'rb') as file:
+            await bot.send_document(message.chat.id, file)
+    else:
+        await message.answer("ошибка на сервере")
 
 
 class FSMAdmin_record_start_goods_exel(StatesGroup):
@@ -59,7 +83,7 @@ async def record_start_goods_exel(message: types.Message, state: FSMContext):
                 msg = await message.answer("Только что произошло обращение к базе данных, в результате которого были"
                                            " внесены изменения. Поэтому файл, который вам был отправлен, является "
                                            "некорректным.\nЕсли вы желаете продолжить изменение данных, пожалуйста, "
-                                           "отправьте команду /record_goods_excel")
+                                           "отправьте команду /record_goods_excel", reply_markup=kb_admin)
                 await state.finish()
                 asyncio.create_task(
                     delete_messages(message.chat.id, message.message_id, msg.message_id, 4, 0))
@@ -547,3 +571,5 @@ def register_handlers_admin(dp: Dispatcher):
     dp.register_message_handler(record_start_goods_exel, commands=['record_goods_exel'])
     dp.register_message_handler(record_end_goods_exel, content_types=['document'],
                                 state=FSMAdmin_record_start_goods_exel.start)
+    dp.register_message_handler(take_goods_exel, commands=['take_goods_exel'])
+    dp.register_message_handler(take_orders_exel, commands=['take_orders_exel'])

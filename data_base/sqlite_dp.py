@@ -38,7 +38,7 @@ async def sql_start():
     await con.execute(
         'CREATE TABLE IF NOT EXISTS orders(number UUID PRIMARY KEY, name_english TEXT, name TEXT, quantity INTEGER, '
         'delivery_cost FLOAT, flower_cost FLOAT, pack_cost FLOAT, discount FLOAT, promo_code VARCHAR(32), '
-        'full_cost FLOAT, phone_client VARCHAR(15), name_tg_client VARCHAR(32), chat_id_client INTEGER, '
+        'full_cost FLOAT, name_client TEXT, phone_client VARCHAR(15), name_tg_client VARCHAR(32), chat_id_client INTEGER, '
         'phone_client2 VARCHAR(15), address TEXT, way_of_delivery TEXT, time_delivery TIMESTAMP, link_delivery TEXT, '
         'comment_courier TEXT, comment_collector TEXT, message_id_client INTEGER, message_id_collector INTEGER,'
         'status_order TEXT, step_collector TEXT, point_start_delivery TEXT, mark INTEGER)'
@@ -228,8 +228,32 @@ async def export_to_excel(table_name=None):
                                                'visibility'])
             # Экспорт DataFrame в Excel таблицу
             df.to_excel(file_path, index=False)
+
         else:
-            print()
+            # Укажите путь к файлу Excel, который нужно удалить
+            file_path = "Exel/data.xlsx"
+
+            # Проверяем, существует ли файл
+            if os.path.exists(file_path):
+                # Удаляем файл
+                os.remove(file_path)
+
+            # Выполнение запроса к базе данных
+            query = f'SELECT * FROM {table_name}'
+            result = await conn.fetch(query)
+
+            dict_colums = {"goods": ["img", "name", "name_english", "category", "subcategory", "description",
+                                     "quantity1", "quantity2", "quantity3", "visibility", "price"],
+                           "orders": ["number", "name_english", "name", "quantity", "delivery_cost", "flower_cost",
+                                      "pack_cost", "discount", "promo_code", "full_cost", "name_client", "phone_client",
+                                      "name_tg_client", "chat_id_client", "phone_client2", "address", "way_of_delivery",
+                                      "time_delivery", "link_delivery", "comment_courier", "comment_collector",
+                                      "message_id_client", "message_id_collector", "status_order", "step_collector",
+                                      "point_start_delivery", "mark"]}
+            # Создание DataFrame из результата запроса
+            df = pd.DataFrame(result, columns=dict_colums[table_name])
+            # Экспорт DataFrame в Excel таблицу
+            df.to_excel(file_path, index=False)
 
     except:
         return False
@@ -271,31 +295,3 @@ async def update_database_from_excel():
         await conn.close()
 
     return True
-
-
-
-
-
-
-
-
-
-
-
-
-async def exel_upload(message: types.Message):
-
-    # Подключаемся к базе данных SQLite3 и получаем все данные из таблицы 'users'
-    df = pd.read_sql_query("SELECT * FROM menu", base)
-
-    # Указываем полный путь к файлу
-    #path = r'/Users/paveldibrovenko/Desktop/tg_bot/data.xlsx'
-
-    # Преобразуем данные в формат Excel и сохраняем в файл 'data.xlsx'
-    df.to_excel('data.xlsx', index=False)
-
-    # Отправляем файл пользователю
-    with open('data.xlsx', 'rb') as file:
-        await bot.send_document(message.chat.id, file)
-
-

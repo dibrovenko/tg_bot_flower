@@ -29,7 +29,7 @@ from yandex.calculate_price_yandex import calculate_price_yandex
 from yandex.cancellation_order import cancellation_order
 from yandex.confirmation_order import confirmation_order
 from parameters import admins, collectors
-
+from yandex.get_lat_lon_from_address import get_lan_lon_from_addrees
 
 admins_list = [value[0] for value in admins.values()]
 collector_list = [value[0] for value in collectors.values()]
@@ -108,6 +108,7 @@ t_order = {}
 t_dostavista = {}
 t_yandex = {}
 
+
 class TimeError(Exception):
     pass
 
@@ -123,6 +124,25 @@ async def cm_start_registration(message: types.Message, state: FSMContext):
     points = ["Калужское", "Маяковского", "Смольная"]
     result = await get_positions_sql("*", table_name="goods", condition="WHERE name_english = $1",
                                      condition_value=name_english)
+
+    last_order = await get_positions_sql("name_client", "phone_client", "phone_client2", "address", "comment_courier",
+                                         "comment_collector", table_name="orders", condition="WHERE chat_id_client = $1"
+                                                                                             " ORDER BY time_delivery "
+                                                                                             "DESC LIMIT 1;",
+                                         condition_value=message.chat.id)
+    if last_order:
+        async with state.proxy() as data:
+            data['last_order'] = True
+            data['name_real'] = last_order[0][0]
+            data["phone"] = last_order[0][1]
+            data["phone2"] = last_order[0][2]
+            data["address"] = last_order[0][3]
+            data["comment_courier"] = last_order[0][4]
+            data["comment_collector"] = last_order[0][5]
+    else:
+        async with state.proxy() as data:
+            data['last_order'] = False
+
     if result is not None:
 
         for ret in result:
@@ -178,7 +198,71 @@ async def cm_start_registration(message: types.Message, state: FSMContext):
 # Подтверждение регистрации
 #@dp.callback_query_handler(lambda c: c.data in ['Yes', 'No'], state=FSMRegistration.name_tg)
 async def cm_confirmation_registration(callback: types.CallbackQuery, state: FSMContext):
-    if callback.data == 'Yes':
+    async with state.proxy() as data:
+        last_order = data['last_order']
+
+    if callback.data == 'Yes' and last_order:
+        async with state.proxy() as data:
+            comment_courier = "Нет инф. для курьера"
+            comment_collector = "Нет инф. для сбощика"
+
+            if data["comment_courier"] is not None:
+                comment_courier = f'Для курьера: {data["comment_courier"]}'
+            if data["comment_collector"] is not None:
+                comment_collector = f'Для сборщика: {data["comment_collector"]}'
+
+            last_info = f"_{data['name_real']},_ перед оформлением вашего нового заказа, хотелось бы напомнить вам " \
+                        f"данные вашего предыдущего заказа:\n\nВаш 📞: {data['phone']}\nПолучателя 📞: {data['phone2']}"\
+                        f"\nАдрес: {data['address']} \n{comment_courier} \n{comment_collector}\n" \
+                        f"\nВыберите 'Использовать', чтобы продолжить работу с этими данными, или 'Изменить'," \
+                        f" чтобы внести изменения."
+
+            await callback.message.delete()
+
+            data['message_back'] = {}
+            data['message_back']["last_info_use"] = data['message_id_start'] \
+                = await callback.message.answer(text=last_info,  parse_mode="Markdown",
+                                                reply_markup=InlineKeyboardMarkup().
+                                                insert(InlineKeyboardButton(f'Использовать', callback_data=f"use")).
+                                                insert(InlineKeyboardButton(f'Изменить', callback_data=f"not_use")))
+            asyncio.create_task(
+                delete_messages(callback.message.chat.id, callback.message.message_id + 1,
+                                data['message_id_start'].message_id, 0.5, 0.3))
+
+            data['dostavista_start_time'] = time.time()
+            available_points = data['available_points']
+            address = data['address']
+            lat_lon = get_lan_lon_from_addrees(address=address)
+            if lat_lon.split() is not None:
+                data['address_lon'] = float(lat_lon.split()[0])
+                data['address_lat'] = float(lat_lon.split()[1])
+            else:
+                await state.finish()
+                await callback.message.answer("Приносим извинения, перезапустите бота /start. \n И напишите админу")
+                return
+            address = data['address']
+
+        await callback.answer("Да")
+        await FSMRegistration.name_real.set()
+
+        task = asyncio.create_task(
+            calculate_price_dostavista(lat=float(lat_lon.split()[1]), lon=float(lat_lon.split()[0]), address=address,
+                                       vehicle_type_id=6, available_points=available_points))
+        global t
+        t[callback.message.chat.id] = task
+        result_calculate_price_dostavista = await task
+        async with state.proxy() as data:
+            data["result_calculate_price_dostavista"] = result_calculate_price_dostavista
+            data['time_when_get_price_dostavista'] = time.time()
+
+        if result_calculate_price_dostavista['tomorrow'] == False:
+            return
+        else:
+            task_dostavista = asyncio.create_task(control_time_dostavista(callback.message, state))
+            global t_dostavista
+            t_dostavista[callback.message.chat.id] = task_dostavista
+
+    elif callback.data == 'Yes':
         await callback.message.delete()
         async with state.proxy() as data:
             data['message_back'] = {}
@@ -188,7 +272,7 @@ async def cm_confirmation_registration(callback: types.CallbackQuery, state: FSM
             asyncio.create_task(
                 delete_messages(callback.message.chat.id, callback.message.message_id+1,
                                 data['message_id_start'].message_id, 0.5, 0.3))
-            await callback.answer()
+            await callback.answer("Да")
         await FSMRegistration.name_real.set()
 
     elif callback.data == "No":
@@ -196,7 +280,7 @@ async def cm_confirmation_registration(callback: types.CallbackQuery, state: FSM
         if callback.message.chat.id in t_order:
             t_order.pop(callback.message.chat.id).cancel()
 
-        await callback.answer()
+        await callback.answer("Нет")
         async with state.proxy() as data:
             temporary_var = await callback.message.answer(text=f"ок, позже будет реализовано",
                                                           reply_markup=kb_client_registration)
@@ -205,6 +289,34 @@ async def cm_confirmation_registration(callback: types.CallbackQuery, state: FSM
                 delete_messages(temporary_var.chat.id, data['message_id_start'], temporary_var.message_id+1, 0.3, 0.2))
         await state.finish()
 
+
+# Обработчик callback-кнопки с data "use" и "not_use"
+#@dp.callback_query_handler(lambda c: c.data in ['use', 'not_use'], state=FSMRegistration.name_real)
+async def cm_last_order(callback: types.CallbackQuery, state: FSMContext):
+    if callback.data == "use":
+        await callback.answer("Вы нажали на кнопку 'Использовать'")
+        await FSMRegistration.comment_collector.set()
+        async with state.proxy() as data:
+            data["last_info_use"] = True
+            comment_collector= data["comment_collector"]
+        await cm_comment_collector_registration(message=callback.message, state=state,
+                                                comment_collector=comment_collector)
+    else:
+        await callback.answer("Вы нажали на кнопку 'Изменить'")
+        await callback.message.delete()
+        async with state.proxy() as data:
+            data["last_info_use"] = False
+            data['message_back'] = {}
+            data['message_back']["phone"] = \
+                data['message_id_start'] = await callback.message.answer(text=f"Как вас зовут?",
+                                                                         reply_markup=kb_client_registration_start)
+            asyncio.create_task(
+                delete_messages(callback.message.chat.id, callback.message.message_id + 1,
+                                data['message_id_start'].message_id, 0.5, 0.3))
+        await FSMRegistration.name_real.set()
+        global t
+        if callback.message.chat.id in t:
+            t.pop(callback.message.chat.id).cancel()
 
 
 #Выход из состояний
@@ -249,8 +361,11 @@ async def back_handler(message: types.Message, state: FSMContext):
                   'comment_courier': [FSMRegistration.address, kb_client_registration],
                   'comment_collector': [FSMRegistration.comment_courier, kb_client_registration_comment],
                   'way_of_delivery': [FSMRegistration.comment_collector, kb_client_registration_comment]}
+    try:
+        await dict_state[current_state[16:]][0].set()
+    except:
+        return
 
-    await dict_state[current_state[16:]][0].set()
     async with state.proxy() as data:
         if current_state[16:] == "way_of_delivery" and data["counter_way_of_delivery"]:
             try:
@@ -258,15 +373,34 @@ async def back_handler(message: types.Message, state: FSMContext):
                 for value in data['message_back']["way_of_delivery2"]["reply_markup"]["inline_keyboard"]:
                     kb.add(InlineKeyboardButton(text=value[0].text, callback_data=value[0].callback_data))
                 await FSMRegistration.way_of_delivery.set()
-                await message.answer(text=data['message_back']["way_of_delivery2"]["text"], reply_markup=kb)
+
                 await bot.delete_message(chat_id=message.chat.id,
                                          message_id=data['message_back']["way_of_delivery2"]['message_id'])
-                await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
                 await message.answer('...', reply_markup=kb_client_registration)
+                data['message_back']["way_of_delivery2"] = \
+                    await message.answer(text=data['message_back']["way_of_delivery2"]["text"], reply_markup=kb)
+
+                await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
                 data["counter_way_of_delivery"] = False
                 return
             except:
                 pass
+        elif current_state[16:] == "way_of_delivery" and data["last_info_use"]:
+            data["counter_way_of_delivery"] = True
+            asyncio.create_task(
+                delete_messages(message.chat.id, data['message_back']["last_info_use"]['message_id'] + 1,
+                                message.message_id + 1, 0, 0))
+            await message.answer('...', reply_markup=kb_client_registration_start)
+            await FSMRegistration.name_real.set()
+            if message.chat.id in t_yandex:
+                t_yandex.pop(message.chat.id).cancel()
+                try:
+                    asyncio.create_task(cancellation_order(id=data['result_calculate_price_yandex'][2]))
+                except:
+                    pass
+            return
+
+
         elif current_state[16:] == "way_of_delivery":
             data["counter_way_of_delivery"] = True
 
@@ -288,6 +422,9 @@ async def back_handler(message: types.Message, state: FSMContext):
 # получаем имя пользователя
 #@dp.message_handler(state=FSMRegistration.name_real)
 async def cm_name_registration(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        if data['last_order']:
+            return
     await bot.send_sticker(chat_id=message.chat.id,
                            sticker=r"CAACAgEAAxkBAAEJuGlktZSyBZW0uQr0znbNlnfzj6tq8wACDwEAAjgOghG1zE1_4hSRgi8E")
 
@@ -383,7 +520,6 @@ async def cm_phone2_wrong_registration(message: types.Message, state: FSMContext
     await FSMRegistration.phone2.set()
 
 
-
 # получаем адрес доставки
 #@dp.message_handler(content_types=[types.ContentType.ANY], state=FSMRegistration.address)
 async def cm_address_registration(message: types.Message, state: FSMContext):
@@ -461,7 +597,7 @@ async def cm_comment_courier_registration(message: types.Message, state: FSMCont
 
 # получаем коммент для сбощика и формируем способы доставки
 #@dp.message_handler(state=FSMRegistration.comment_collector)
-async def cm_comment_collector_registration(message: types.Message, state: FSMContext):
+async def cm_comment_collector_registration(message: types.Message, state: FSMContext, comment_collector=None):
     await FSMRegistration.way_of_delivery.set()
     async with state.proxy() as data:
         data["counter_way_of_delivery"] = False
@@ -474,10 +610,14 @@ async def cm_comment_collector_registration(message: types.Message, state: FSMCo
                                  reply_markup=kb_client_registration)
         await bot.send_sticker(chat_id=message.chat.id,
                                sticker=r"CAACAgEAAxkBAAEJuMtktbSM73H5cbOLlWW8E-_83hFHHQACHgEAAjgOghFGWGjXaYZe_S8E")
-        if message.text == "Пропустить":
+
+        if message.text == "Пропустить" and comment_collector is None:
             data['comment_collector'] = None
-        else:
+        elif comment_collector is None:
             data['comment_collector'] = message.text
+        else:
+            data['comment_collector'] = comment_collector
+
         task = asyncio.create_task(
             calculate_price_yandex(lat=data['address_lat'], lon=data['address_lon'], address=data['address'],
                                    available_points=data['available_points'],
@@ -494,6 +634,7 @@ async def cm_comment_collector_registration(message: types.Message, state: FSMCo
 
             current_state = await state.get_state()
             if current_state[16:] != "way_of_delivery":
+                asyncio.create_task(cancellation_order(id=result_calculate_price_yandex[2]))
                 return
 
             async with state.proxy() as data:
@@ -532,18 +673,22 @@ async def cm_comment_collector_registration(message: types.Message, state: FSMCo
             await asyncio.sleep(1.5)
             counter += 1
 
-    asyncio.create_task(delete_messages(message.chat.id, message.message_id+1, message.message_id + 3, 0, 0))
+
     global t_dostavista
     if message.chat.id in t_dostavista:
         t_dostavista.pop(message.chat.id).cancel()
 
     current_state = await state.get_state()
     if current_state[16:] != "way_of_delivery":
+        asyncio.create_task(cancellation_order(id=result_calculate_price_yandex[2]))
         return
 
     # выводит варианты способов доставки
-    asyncio.create_task(
-        func_send_way_delivery(message, state, price_yandex, min_price_today, min_price_tommorow, start_time_today))
+    msg_del_id = await func_send_way_delivery(message, state, price_yandex, min_price_today,
+                                              min_price_tommorow, start_time_today)
+
+    # удаляем ненужные сообщения
+    asyncio.create_task(delete_messages(message.chat.id, message.message_id + 1, msg_del_id - 1, 0, 0))
 
     #запускаем контроль за временим доставки
     global t_yandex
@@ -564,7 +709,7 @@ async def cm_way_of_delivery_registration(callback: types.CallbackQuery, state: 
         data["counter_way_of_delivery"] = True
         match callback.data:
             case 'Express':
-                await callback.answer()
+                await callback.answer("Вы выбрали Express ⚡️")
                 data['way_of_delivery'] = callback.data
                 data["price_delivery_final"] = round(data['result_calculate_price_yandex'][0])
                 data["point_start_delivery"] = data['result_calculate_price_yandex'][1]
@@ -656,7 +801,7 @@ async def cm_way_of_delivery_registration(callback: types.CallbackQuery, state: 
                     keyboard.add(types.InlineKeyboardButton(text=f"еще варианты ⇨", callback_data=f"Today more"))
                 await callback.message.edit_text("Выберите удобное время\n для доставки на сегодня",
                                                  reply_markup=keyboard)
-                await callback.answer()
+                await callback.answer(f"{callback.data} 🚚")
 
             case 'Today more':
                 keyboard = types.InlineKeyboardMarkup()
@@ -675,7 +820,7 @@ async def cm_way_of_delivery_registration(callback: types.CallbackQuery, state: 
                 keyboard.add(types.InlineKeyboardButton(text=f"⇦ назад", callback_data=f"Today back"))
                 await callback.message.edit_text("Выберите удобное время\n для доставки на сегодня",
                                                  reply_markup=keyboard)
-                await callback.answer()
+                await callback.answer(f"{callback.data} 🚚")
 
             case 'tomorrow' | 'tomorrow back':
                 keyboard = types.InlineKeyboardMarkup()
@@ -696,7 +841,7 @@ async def cm_way_of_delivery_registration(callback: types.CallbackQuery, state: 
                 keyboard.add(types.InlineKeyboardButton(text=f"еще варианты ⇨", callback_data=f"tomorrow more"))
                 await callback.message.edit_text("Выберите удобное время\n для доставки на завтра",
                                                  reply_markup=keyboard)
-                await callback.answer()
+                await callback.answer(f"{callback.data} 🚛")
 
             case 'tomorrow more':
                 keyboard = types.InlineKeyboardMarkup()
@@ -714,7 +859,7 @@ async def cm_way_of_delivery_registration(callback: types.CallbackQuery, state: 
 
                 keyboard.add(types.InlineKeyboardButton(text=f"⇦ назад", callback_data=f"tomorrow back"))
                 await callback.message.edit_text("Выберите удобное время\n для доставки на завтра", reply_markup=keyboard)
-                await callback.answer()
+                await callback.answer(f"{callback.data} 🚛")
 
             case _:
                 dict_for_way_of_delivery = {"Today": "сегодня", "tomorrow": "завтра"}
@@ -794,7 +939,7 @@ async def cm_way_of_delivery_registration(callback: types.CallbackQuery, state: 
                     reply_markup=kb_client_pay_inline
                 )
 
-                await callback.answer()
+                await callback.answer(f"{callback.data}")
                 await FSMRegistration.payment.set()
                 asyncio.create_task(
                     delete_messages(callback.message.chat.id, data['message_id_buy'],
@@ -806,7 +951,7 @@ async def cm_way_of_delivery_registration(callback: types.CallbackQuery, state: 
 async def cancellation_of_payment(callback: types.CallbackQuery, state: FSMContext):
     asyncio.create_task(
             delete_messages(callback.message.chat.id, callback.message.message_id, callback.message.message_id + 1, 0, 0))
-    await callback.answer()
+    await callback.answer("Вы нажали 'отмена'")
     await callback.message.answer('OK', reply_markup=kb_client)
     global t_order, t_yandex
     async with state.proxy() as data:
@@ -883,10 +1028,11 @@ async def successful_payment(message: types.Message, state: FSMContext):
 
         comment_courier = "Нет инф. для курьера"
         comment_collector = "Нет инф. для сбощика"
+
         if data["comment_courier"] != None:
             comment_courier = f'Для курьера: {data["comment_courier"]}'
         if data["comment_collector"] != None:
-            comment_collector = f'Для курьера: {data["comment_collector"]}'
+            comment_collector = f'Для сборщика: {data["comment_collector"]}'
 
         description = 'Номер заказа №' + number_order + '\n' + \
                       data["name"] + ' ' + str(data["quantity"]) + 'шт.\n' + \
@@ -905,17 +1051,17 @@ async def successful_payment(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
 
         columns_sql = ["number", "name_english", "name", "quantity", "delivery_cost", "flower_cost", "pack_cost",
-                       "discount", "promo_code",  "full_cost", "phone_client", "name_tg_client", "chat_id_client",
-                       "phone_client2", "address", "way_of_delivery", "time_delivery", "link_delivery",
-                       "comment_courier", "comment_collector", "message_id_client", "message_id_collector",
-                       "status_order", "step_collector", "point_start_delivery", "mark"]
+                       "discount", "promo_code",  "full_cost", "name_client", "phone_client", "name_tg_client",
+                       "chat_id_client", "phone_client2", "address", "way_of_delivery", "time_delivery",
+                       "link_delivery", "comment_courier", "comment_collector", "message_id_client",
+                       "message_id_collector", "status_order", "step_collector", "point_start_delivery", "mark"]
         values_sql = [number_order, data["name_english"], data["name"], data["quantity"], data["price_delivery_final"],
                       data["cost_flower"], data['packaging_price'], data['discount'], data['promo_code'],
                       (data['full_cost_without_delivery'] - data['discount'] + data["price_delivery_final"]),
-                      data["phone"], data['name_tg'], message.chat.id, data["phone2"], data["address"],
-                      data["way_of_delivery"], data["time_delivery_sql"], "link", data["comment_courier"],
-                      data["comment_collector"], msg.message_id, msg.message_id, "new", "waiting",
-                      data["point_start_delivery"], None]
+                      data['name_real'], data["phone"], data['name_tg'], message.chat.id, data["phone2"],
+                      data["address"], data["way_of_delivery"], data["time_delivery_sql"], "link",
+                      data["comment_courier"], data["comment_collector"], msg.message_id, msg.message_id, "new",
+                      "waiting", data["point_start_delivery"], None]
 
         result_record = await add_positions_sql(table_name="orders", columns=columns_sql, values=values_sql)
         global collectors
@@ -938,6 +1084,8 @@ def register_handlers_clients(dp: Dispatcher):
     dp.register_message_handler(cm_start_registration, commands=['Купить'], state=None)
     dp.register_callback_query_handler(cm_confirmation_registration, lambda c: c.data in ['Yes', 'No'],
                                        state=FSMRegistration.name_tg)
+    dp.register_callback_query_handler(cm_last_order, lambda c: c.data in ['use', 'not_use'],
+                                       state=FSMRegistration.name_real)
     dp.register_message_handler(cancel_handler, filters.Text(equals='отмена ✕', ignore_case=True), state="*")
     dp.register_message_handler(back_handler, filters.Text(equals='назад ⤴', ignore_case=True), state="*")
     dp.register_message_handler(cm_name_registration, state=FSMRegistration.name_real)

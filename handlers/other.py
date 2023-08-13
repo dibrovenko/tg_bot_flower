@@ -120,7 +120,9 @@ async def set_admin_commands(message: types.Message):
         types.BotCommand(command="/start", description="перезапустить бота"),
         types.BotCommand(command="/client", description="клиенский интерфейс"),
         types.BotCommand(command="/collector", description="интерфейс сборщика"),
-        types.BotCommand(command="/record_goods_exel", description="изменить данные товаров с Exel")
+        types.BotCommand(command="/record_goods_exel", description="изменить данные товаров с Exel"),
+        types.BotCommand(command="/take_goods_exel", description="получить данные товаров с Exel"),
+        types.BotCommand(command="/take_orders_exel", description="получить данные о заказах с Exel")
     ]
     scope = BotCommandScopeChat(chat_id=message.chat.id)
     await bot.set_my_commands(bot_commands, scope=scope)
@@ -131,6 +133,7 @@ async def set_collectors_commands(message: types.Message):
         types.BotCommand(command="/start", description="перезапустить бота"),
         types.BotCommand(command="/client", description="клиенский интерфейс"),
         types.BotCommand(command="/admin", description="admin интерфейс"),
+        types.BotCommand(command="/take_orders_exel", description="получить данные о заказах с Exel")
     ]
     scope = BotCommandScopeChat(chat_id=message.chat.id)
     await bot.set_my_commands(bot_commands, scope=scope)
@@ -279,7 +282,7 @@ async def comment_collector_send_messages(message: types.Message):
                                 text=first_message_text, parse_mode="Markdown")
 
 
-def func_for_valid_phone_number(my_string_number)->bool:
+def func_for_valid_phone_number(my_string_number) -> bool:
     if my_string_number.startswith("8"):
         my_string_number = "+7" + my_string_number[1:]
     try:
@@ -289,7 +292,7 @@ def func_for_valid_phone_number(my_string_number)->bool:
 
 
 async def func_send_way_delivery(message: types.Message, state: FSMContext, price_yandex, min_price_today,
-                                 min_price_tommorow, start_time_today, text=None):
+                                 min_price_tommorow, start_time_today, text=None) -> int:
     if text is None:
         text = f"Отлично, осталось выбрать способ доставки:"
         text2 = f"Сейчас уже закрылись наши магазины, но вы можете сделать заказ"
@@ -348,7 +351,7 @@ async def func_send_way_delivery(message: types.Message, state: FSMContext, pric
                                                                 add(InlineKeyboardButton(
                                                                     f'🚛 на завтра от {min_price_tommorow}₽',
                                                                     callback_data=f"tomorrow")))
-
+        return data['message_id_start']['message_id']
 
 
 async def control_time_order(message: types.Message, state: FSMContext):

@@ -7,7 +7,8 @@ from dotenv import load_dotenv, find_dotenv
 
 from parameters import info_start_point
 
-async def calculate_price_yandex(lat: float, lon: float, address: str, available_points: list, phone_client: str, name_client: str, comment_client: str, ssl_context=None) -> list:
+async def calculate_price_yandex(lat: float, lon: float, address: str, available_points: list, phone_client: str,
+                                 name_client: str, comment_client: str, ssl_context=None) -> list:
     """
     функция, которая вычисляет стоимость доставки в dostavista на сегодня и на завтра
     :rtype: data_for_return - [цена, место откуда везти, id заказа, который ждет подтверждения], а может быть просто [False]
@@ -19,7 +20,7 @@ async def calculate_price_yandex(lat: float, lon: float, address: str, available
     :param comment_client:
     """
 
-    now = datetime.datetime.now() - datetime.timedelta(hours=15) #- datetime.timedelta(minutes=20)
+    now = datetime.datetime.now() - datetime.timedelta(hours=10) #- datetime.timedelta(minutes=20)
     if now.hour < 9 or now.hour > 19:
         print([False])
         return [False]
