@@ -10,14 +10,7 @@ import logging
 from fastapi import FastAPI
 
 
-sentry_sdk.init(
-  dsn="https://b4aca09eeaafe72b53752949f220b97f@o4505706547314688.ingest.sentry.io/4505710218182656",
 
-  # Set traces_sample_rate to 1.0 to capture 100%
-  # of transactions for performance monitoring.
-  # We recommend adjusting this value in production.
-  traces_sample_rate=1.0
-)
 app = FastAPI()
 
 # получение пользовательского логгера и установка уровня логирования
