@@ -35,8 +35,22 @@ admins_list = [value[0] for value in admins.values()]
 collector_list = [value[0] for value in collectors.values()]
 
 
+def handle_error(func):
+    async def wrapper(message: types.Message):
+        try:
+            #print(*args)
+            #print(type(*args))
+            return await func(message)
+        except Exception as e:
+            # Обработка ошибки
+            await message.answer(f"Ошибка: {e}")
+    return wrapper
+
+
 # @dp.message_handler(commands = ['start', 'help'])
+@handle_error
 async def commands_start(message: types.Message):
+    print(2/0)
     if message.chat.id in admins_list:
         await set_admin_commands(message=message)
         await bot.send_message(message.from_user.id, f'Вы получили права администратора',
@@ -49,6 +63,7 @@ async def commands_start(message: types.Message):
         await set_client_commands()
         await bot.send_message(message.from_user.id, f'Это магазин, который позволит быстро и дешево купить цветы !',
                                reply_markup=kb_client)
+
 
 
 #@dp.message_handler(commands = ['client'])

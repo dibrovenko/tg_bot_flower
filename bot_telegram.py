@@ -1,30 +1,74 @@
 from aiogram.utils import executor
 from create_bot import dp, bot
 from data_base import sqlite_dp
+from aiogram import types, Dispatcher, Bot
 
-import emoji
+import os
+from dotenv import load_dotenv, find_dotenv
 
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
-storage = MemoryStorage()
-
-print(emoji.emojize(':thumbs_up:'))
+import logging
+from fastapi import FastAPI
 
 
-async def on_startup(_):
-    print('Бот вышел в онлайн')
+sentry_sdk.init(
+  dsn="https://b4aca09eeaafe72b53752949f220b97f@o4505706547314688.ingest.sentry.io/4505710218182656",
+
+  # Set traces_sample_rate to 1.0 to capture 100%
+  # of transactions for performance monitoring.
+  # We recommend adjusting this value in production.
+  traces_sample_rate=1.0
+)
+app = FastAPI()
+
+# получение пользовательского логгера и установка уровня логирования
+py_logger = logging.getLogger(__name__)
+py_logger.setLevel(logging.INFO)
+
+# настройка обработчика и форматировщика в соответствии с нашими нуждами
+py_handler = logging.FileHandler(f"{__name__}.log", mode='w')
+py_formatter = logging.Formatter("%(name)s %(asctime)s %(levelname)s %(message)s")
+
+# добавление форматировщика к обработчику
+py_handler.setFormatter(py_formatter)
+# добавление обработчика к логгеру
+py_logger.addHandler(py_handler)
+
+
+# url для webhook
+load_dotenv(find_dotenv())
+NGROK_TUNNEL_URL = os.getenv('NGROK_TUNNEL_URL')
+TELEGRAM_BOT_TOKENT = os.getenv('bot_token')
+
+WEBHOOK_PATH = f"/bot/{TELEGRAM_BOT_TOKENT}"
+WEBHOOK_URL = f"{NGROK_TUNNEL_URL}{WEBHOOK_PATH}"
+
+@app.on_event("startup")
+async def on_startup():
+    webhook_info = await bot.get_webhook_info()
+    if webhook_info.url != WEBHOOK_URL:
+        await bot.set_webhook(url=WEBHOOK_URL)
     await sqlite_dp.sql_start()
 
 
+@app.post(WEBHOOK_PATH)
+async def bot_webhook(update: dict):
 
-from handlers import client, admin, collector, other
-client.register_handlers_clients(dp)
-admin.register_handlers_admin(dp)
-collector.register_handlers_collector(dp)
-other.register_handlers_other(dp) #должен быть ниже всех
+    telegram_update = types.Update(**update)
+    Dispatcher.set_current(dp)
+    Bot.set_current(bot)
+    await dp.process_update(telegram_update)
 
 
+@app.on_event("shutdown")
+async def on_shutdown():
+    await bot.session.close()
 
-executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
+"""
+async def on_startup(_):
+    print('Бот вышел в онлайн')
+    await sqlite_dp.sql_start()"""
+
+#executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
 
 
 
