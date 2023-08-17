@@ -1,7 +1,25 @@
 import requests
 from aiogram import types
 import os
+import logging
 from dotenv import load_dotenv, find_dotenv
+
+
+py_logger = logging.getLogger(__name__)
+py_logger.setLevel(logging.INFO)
+
+# настройка обработчика и форматировщика в соответствии с нашими нуждами
+log_file = os.path.join(f"log_directory/{__name__}.log")
+py_handler = logging.FileHandler(log_file, mode='w')
+
+#py_handler = logging.FileHandler(f"{__name__}.log", mode='w')
+py_formatter = logging.Formatter("%(name)s %(asctime)s %(levelname)s %(message)s")
+
+# добавление форматировщика к обработчику
+py_handler.setFormatter(py_formatter)
+# добавление обработчика к логгеру
+py_logger.addHandler(py_handler)
+
 
 def address_correctness_check(message: types.Message) -> list:
     """
@@ -44,6 +62,7 @@ def address_correctness_check(message: types.Message) -> list:
         else:
             return [True, text, float(points.split()[0]), float(points.split()[1])]
 
-    except:
+    except Exception as e:
+        py_logger.error(f"функция adress, message: {message}, Ошибка: {e}")
         return [False, " ", " "]
 

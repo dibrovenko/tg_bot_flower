@@ -1,6 +1,7 @@
 import asyncio
 import random
 import time
+import logging
 import os
 from dotenv import load_dotenv, find_dotenv
 import requests
@@ -15,9 +16,27 @@ from data_base.sqlite_dp import get_positions_sql
 from aiogram.types import BotCommandScopeChat, InlineKeyboardButton, InlineKeyboardMarkup
 
 from dostavista.price import calculate_price_dostavista
+from error_decorators.client import dec_error_send_way_delivery
 from keyboards import kb_client_registration, kb_client
 from yandex.calculate_price_yandex import calculate_price_yandex
 from yandex.cancellation_order import cancellation_order
+
+
+# получение пользовательского логгера и установка уровня логирования
+py_logger = logging.getLogger(__name__)
+py_logger.setLevel(logging.INFO)
+
+# настройка обработчика и форматировщика в соответствии с нашими нуждами
+log_file = os.path.join(f"log_directory/{__name__}.log")
+py_handler = logging.FileHandler(log_file, mode='w')
+
+#py_handler = logging.FileHandler(f"{__name__}.log", mode='w')
+py_formatter = logging.Formatter("%(name)s %(asctime)s %(levelname)s %(message)s")
+
+# добавление форматировщика к обработчику
+py_handler.setFormatter(py_formatter)
+# добавление обработчика к логгеру
+py_logger.addHandler(py_handler)
 
 
 #@dp.message_handler()
@@ -32,9 +51,9 @@ async def echo_send(message: types.Message):
     #await message.reply(message.text)
     #await bot.send_message(message.from_user.id, message.text)
 
-def register_handlers_other(dp : Dispatcher):
-    dp.register_message_handler(echo_send)
 
+def register_handlers_other(dp: Dispatcher):
+    dp.register_message_handler(echo_send)
 
 
 async def delete_messages(chat_id, start, end, time: float, time_circle: float):
@@ -95,7 +114,6 @@ async def find_best_way(destination: str):
     return dict(sorted(origin_dict.items(), key=lambda x: x[1][0]))
 
 
-
 # Устанавливаем команды для удаления для конкретного чата (ID чата: 1234567890)
 async def set_admin_dell_commands(message: types.Message):
     names = []
@@ -111,8 +129,8 @@ async def set_admin_dell_commands(message: types.Message):
         await bot.set_my_commands(commands=commands, scope=scope)
 
     else:
+        py_logger.error(f"Ошибка set_admin_dell_commands, chat.id: {message.chat.id}")
         await message.answer("ошибка")
-
 
 
 async def set_admin_commands(message: types.Message):
@@ -159,8 +177,11 @@ async def set_client_commands2(message: types.Message):
 
 
 def check_valid_text(text):
-    """ Проверяет, что текст состоит только из не заглавных английских букв, цифр и символа _"""
-    return all(c.islower() or c.isdigit() or c == '_' for c in text)
+    try:
+        """ Проверяет, что текст состоит только из не заглавных английских букв, цифр и символа _"""
+        return all(c.islower() or c.isdigit() or c == '_' for c in text)
+    except Exception as e:
+        py_logger.error(f"Ошибка check_valid_text {e}, text: {text}")
 
 
 def delivery_time():
@@ -227,7 +248,8 @@ async def phone_send_messages(message: types.Message):
         await asyncio.sleep(0.8)
         await bot.edit_message_text(chat_id=message.chat.id, message_id=msg.message_id,
                                               text=message.text + f"_\nНажмите на скрепку📎 снизу.\nЗатем в разделе 'Contact'👤 выберите человека, которому нужно доставить букет_ или введите номер вручную", parse_mode="Markdown")
-    except:
+    except Exception as e:
+        py_logger.info(f"Ошибка phone_send_messages {e}, message: {message}")
         return
 
 
@@ -239,7 +261,8 @@ async def phone2_send_messages(message: types.Message):
         await asyncio.sleep(0.8)
         await bot.edit_message_text(chat_id=message.chat.id, message_id=msg.message_id,
                                               text=message.text + f"_\nНажмите на скрепку📎 снизу \nЗатем в разделе 'Location'📍 выберите нужный адрес для доставки_ или введите адрес вручную", parse_mode="Markdown")
-    except:
+    except Exception as e:
+        py_logger.info(f"Ошибка phone2_send_messages {e}, message: {message}")
         return
 
 
@@ -254,7 +277,8 @@ async def comment_courier_send_messages(message: types.Message):
             try:
                 message = await bot.edit_message_text(chat_id=message.chat.id, message_id=message.message_id,
                                                       text=message.text + i)
-            except:
+            except Exception as e:
+                py_logger.info(f"Ошибка comment_courier_send_messages {e}, message: {message}")
                 return
     message.text += " "
 
@@ -274,8 +298,8 @@ async def comment_collector_send_messages(message: types.Message):
             try:
                 message = await bot.edit_message_text(chat_id=message.chat.id, message_id=message.message_id,
                                                       text=message.text + i)
-            except:
-                return
+            except Exception as e:
+                py_logger.info(f"Ошибка comment_collector_send_messages {e}, message: {message}")
         message.text += " "
     first_message_text += "_" + text + "..._"
     await bot.edit_message_text(chat_id=message.chat.id, message_id=message.message_id,
@@ -287,10 +311,12 @@ def func_for_valid_phone_number(my_string_number) -> bool:
         my_string_number = "+7" + my_string_number[1:]
     try:
         return phonenumbers.is_valid_number(phonenumbers.parse(my_string_number))
-    except:
+    except Exception as e:
+        py_logger.debug(f"Ошибка func_for_valid_phone_number {e}, my_string_number: {my_string_number}")
         return False
 
 
+@dec_error_send_way_delivery
 async def func_send_way_delivery(message: types.Message, state: FSMContext, price_yandex, min_price_today,
                                  min_price_tommorow, start_time_today, text=None) -> int:
     if text is None:
@@ -368,7 +394,10 @@ async def control_time_order(message: types.Message, state: FSMContext):
             await state.finish()
 
     except asyncio.CancelledError:
-        print("Асинхронная функция t_order была остановлена")
+        py_logger.info(f"Асинхронная функция t_order была остановлена, message.chat.id: {message.chat.id}")
+
+    except Exception as e:
+        py_logger.error(f"Ошибка control_time_order {e}, message: {message}, state: {await state.get_state()}")
 
 
 async def control_time_dostavista(message: types.Message, state: FSMContext):
@@ -393,8 +422,11 @@ async def control_time_dostavista(message: types.Message, state: FSMContext):
                 return
 
     except asyncio.CancelledError:
-        print("Асинхронная функция control_time_dostavista была остановлена")
+        py_logger.info(f"Асинхронная функция control_time_dostavista была остановлена,"
+                       f" message.chat.id: {message.chat.id}")
 
+    except Exception as e:
+        py_logger.error(f"Ошибка control_time_dostavista {e}, message: {message}, state: {await state.get_state()}")
 
 
 async def control_time_yandex(message: types.Message, state: FSMContext, time_when_get_price_dostavista,
@@ -428,8 +460,9 @@ async def control_time_yandex(message: types.Message, state: FSMContext, time_wh
                 async with state.proxy() as data:
                     try:
                         asyncio.create_task(cancellation_order(id=data['result_calculate_price_yandex'][2]))
-                    except:
-                        pass
+                    except Exception as e:
+                        py_logger.info(
+                            f"функция cancellation_order не выполнилась: {e}, message.chat.id: {message.chat.id}")
 
                     data["result_calculate_price_dostavista"] = result_calculate_price_dostavista
                     if data['result_calculate_price_dostavista']['today'] == False:
@@ -479,13 +512,14 @@ async def control_time_yandex(message: types.Message, state: FSMContext, time_wh
         async with state.proxy() as data:
             try:
                 asyncio.create_task(cancellation_order(id=data['result_calculate_price_yandex'][2]))
-            except:
-                pass
+
+            except Exception as e:
+                py_logger.info(f"функция cancellation_order не выполнилась: {e}, message.chat.id: {message.chat.id}")
         await state.finish()
 
-
     except asyncio.CancelledError:
-        print("Асинхронная функция control_time_yandex была остановлена")
+        py_logger.info(f"Асинхронная функция control_time_yandex была остановлена,"
+                       f" message.chat.id: {message.chat.id}")
 
-    except:
-        pass
+    except Exception as e:
+        py_logger.error(f"Ошибка control_time_yandex {e}, message: {message}, state: {await state.get_state()}")

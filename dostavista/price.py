@@ -3,9 +3,28 @@ import ssl
 import asyncio
 import aiohttp
 import os
+import logging
 from dotenv import load_dotenv, find_dotenv
 
 from parameters import info_start_point
+
+
+py_logger = logging.getLogger(__name__)
+py_logger.setLevel(logging.INFO)
+
+# настройка обработчика и форматировщика в соответствии с нашими нуждами
+log_file = os.path.join(f"log_directory/{__name__}.log")
+py_handler = logging.FileHandler(log_file, mode='w')
+
+#py_handler = logging.FileHandler(f"{__name__}.log", mode='w')
+py_formatter = logging.Formatter("%(name)s %(asctime)s %(levelname)s %(message)s")
+
+# добавление форматировщика к обработчику
+py_handler.setFormatter(py_formatter)
+# добавление обработчика к логгеру
+py_logger.addHandler(py_handler)
+
+
 
 async def calculate_price_dostavista(lat: float, lon: float, address: str, vehicle_type_id: int, available_points: list, ssl_context=None) -> dict:
     """
@@ -84,7 +103,8 @@ async def calculate_price_dostavista(lat: float, lon: float, address: str, vehic
         # Здесь начинаем работать с сегодняшним временем
         # приводим время к правильному формату
         now = datetime.datetime.now().astimezone()# + datetime.timedelta(hours=0) - datetime.timedelta(minutes=26)
-        print(now)
+        py_logger.info(f"price nowtime: {now}")
+
         if now.minute < 15:
             rounded_time = now.replace(minute=0, second=0, microsecond=0)
         elif now.minute < 45:
@@ -141,10 +161,13 @@ async def calculate_price_dostavista(lat: float, lon: float, address: str, vehic
         else:
             data_for_return["today"] = False
 
-        print(data_for_return)
+        py_logger.info(f"price data_for_return: {data_for_return}")
         return data_for_return
+
     except asyncio.CancelledError:
-        print("Асинхронная функция price была остановлена")
+        py_logger.info("Асинхронная функция price была остановлена")
         return {"today": False, 'tomorrow': False}
-    except:
+
+    except Exception as e:
+        py_logger.error(f"Асинхронная функция price ошибка: {e}")
         return {"today": False, 'tomorrow': False}

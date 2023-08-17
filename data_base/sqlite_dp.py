@@ -2,11 +2,27 @@ import asyncpg_listen
 import asyncpg
 import asyncio
 import sqlite3 as sq
-import re
 import pandas as pd
-from create_bot import dp, bot, types
 import os
+import logging
 from dotenv import load_dotenv, find_dotenv
+
+
+py_logger = logging.getLogger(__name__)
+py_logger.setLevel(logging.ERROR)
+
+# настройка обработчика и форматировщика в соответствии с нашими нуждами
+log_file = os.path.join(f"log_directory/{__name__}.log")
+py_handler = logging.FileHandler(log_file, mode='w')
+
+#py_handler = logging.FileHandler(f"{__name__}.log", mode='w')
+py_formatter = logging.Formatter("%(name)s %(asctime)s %(levelname)s %(message)s")
+
+# добавление форматировщика к обработчику
+py_handler.setFormatter(py_formatter)
+# добавление обработчика к логгеру
+py_logger.addHandler(py_handler)
+
 
 # Flag variable to indicate if handle_notifications has been triggered
 notification_received = False
@@ -61,8 +77,10 @@ async def add_positions_sql(table_name: str, columns: list, values: list):
         if table_name == "goods":
             await con.execute(f"NOTIFY update_goods, '{1}'")
 
-    except:
+    except Exception as e:
         # Возврат значения по умолчанию в случае ошибки
+        py_logger.error(f"Не добавились данные в базу данных. table_name: {table_name}, columns: {columns},"
+                        f" values: {values} , Ошибка: {e}")
         return False
 
     finally:
@@ -93,8 +111,10 @@ async def get_positions_sql(*args: str, table_name: str, condition=None, conditi
         else:
             result = await con.fetch(query)
 
-    except:
+    except Exception as e:
         # Возврат значения по умолчанию в случае ошибки
+        py_logger.error(f"Не выдали данные из базы данных. table_name: {table_name}, condition:{condition}, "
+                        f"condition_value:{condition_value}, Ошибка: {e}")
         return None
 
     finally:
@@ -117,7 +137,9 @@ async def del_positions_sql(table_name: str, condition: str, value: str):
         if table_name == "goods":
             await con.execute(f"NOTIFY update_goods, '{1}'")
 
-    except:
+    except Exception as e:
+        py_logger.error(f"Не удалили данные из базы данных. table_name: {table_name}, condition: {condition}, "
+                        f"value: {value}, Ошибка: {e}")
         # Возврат значения по умолчанию в случае ошибки
         return False
 
@@ -152,7 +174,8 @@ async def update_positions_sql(table_name: str, column_values: dict, condition=N
             await con.execute(f"NOTIFY update_goods, '{1}'")
 
     except Exception as e:
-        print(f"Ошибка при обновлении данных: {str(e)}")
+        py_logger.error(f"Не обновили данные из базы данных. table_name: {table_name}, condition: {condition}, "
+                        f"column_values: {column_values}, Ошибка: {e}")
         # Возврат значения по умолчанию в случае ошибки
         return False
 
@@ -165,7 +188,7 @@ async def update_positions_sql(table_name: str, column_values: dict, condition=N
 
 async def handle_notifications(notification: asyncpg_listen.NotificationOrTimeout) -> None:
     global notification_received
-    print(f"{notification} has been received")
+    py_logger.info(f"{notification} has been received")
     notification_received = True
 
 
@@ -192,10 +215,11 @@ async def notifications_start():
             await asyncio.sleep(3)
 
     except asyncio.CancelledError:
-        print("функция остановлена")
+        py_logger.info("функция notifications_start остановлена")
         return True
 
-    except:
+    except Exception as e:
+        py_logger.error(f"функция notifications_start, Ошибка: {e}")
         return False
 
     finally:
@@ -255,7 +279,8 @@ async def export_to_excel(table_name=None):
             # Экспорт DataFrame в Excel таблицу
             df.to_excel(file_path, index=False)
 
-    except:
+    except Exception as e:
+        py_logger.error(f"функция export_to_excel, table_name: {table_name}, Ошибка: {e}")
         return False
 
     finally:
@@ -287,7 +312,8 @@ async def update_database_from_excel():
                 await conn.executemany(f'UPDATE goods SET {column_name} = $1 WHERE name = $2;',
                                        zip(values, df['name'].tolist()))
 
-    except:
+    except Exception as e:
+        py_logger.error(f"функция update_database_from_excel не смогла обновить данные, Ошибка: {e}")
         return False
 
     finally:

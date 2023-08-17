@@ -8,8 +8,16 @@ from dotenv import load_dotenv, find_dotenv
 
 import logging
 from fastapi import FastAPI
+import sentry_sdk
 
+sentry_sdk.init(
+  dsn="https://7545c747e68a60a25d8634ac9a82ed4e@o4505706547314688.ingest.sentry.io/4505710368063488",
 
+  # Set traces_sample_rate to 1.0 to capture 100%
+  # of transactions for performance monitoring.
+  # We recommend adjusting this value in production.
+  traces_sample_rate=1.0
+)
 
 app = FastAPI()
 
@@ -18,7 +26,10 @@ py_logger = logging.getLogger(__name__)
 py_logger.setLevel(logging.INFO)
 
 # настройка обработчика и форматировщика в соответствии с нашими нуждами
-py_handler = logging.FileHandler(f"{__name__}.log", mode='w')
+log_file = os.path.join(f"log_directory/{__name__}.log")
+py_handler = logging.FileHandler(log_file, mode='w')
+
+#py_handler = logging.FileHandler(f"{__name__}.log", mode='w')
 py_formatter = logging.Formatter("%(name)s %(asctime)s %(levelname)s %(message)s")
 
 # добавление форматировщика к обработчику
@@ -35,12 +46,14 @@ TELEGRAM_BOT_TOKENT = os.getenv('bot_token')
 WEBHOOK_PATH = f"/bot/{TELEGRAM_BOT_TOKENT}"
 WEBHOOK_URL = f"{NGROK_TUNNEL_URL}{WEBHOOK_PATH}"
 
+
 @app.on_event("startup")
 async def on_startup():
     webhook_info = await bot.get_webhook_info()
     if webhook_info.url != WEBHOOK_URL:
         await bot.set_webhook(url=WEBHOOK_URL)
     await sqlite_dp.sql_start()
+    py_logger.info(f"Bot online {__name__}...")
 
 
 @app.post(WEBHOOK_PATH)
@@ -50,18 +63,22 @@ async def bot_webhook(update: dict):
     Dispatcher.set_current(dp)
     Bot.set_current(bot)
     await dp.process_update(telegram_update)
+    py_logger.debug(f"Update: {telegram_update}  {__name__}...")
+    return
 
 
 @app.on_event("shutdown")
 async def on_shutdown():
     await bot.session.close()
+    py_logger.info(f"Bot offline {__name__}...")
+
 
 """
 async def on_startup(_):
     print('Бот вышел в онлайн')
-    await sqlite_dp.sql_start()"""
+    await sqlite_dp.sql_start()
 
-#executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
+executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
 
-
+"""
 

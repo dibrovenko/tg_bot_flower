@@ -1,6 +1,7 @@
 import asyncio
 import re
 import os
+import logging
 
 from aiogram.dispatcher import FSMContext, filters
 from aiogram.dispatcher.filters import IDFilter
@@ -14,7 +15,26 @@ from keyboards import kb_admin, kb_add_admin, kb_load_photo_admin, inline_kb_cat
 from data_base.sqlite_dp import get_positions_sql, add_positions_sql, \
     del_positions_sql, update_positions_sql, export_to_excel, notifications_start, update_database_from_excel
 from handlers.other import set_admin_dell_commands, check_valid_text, set_admin_commands, delete_messages
+from error_decorators.admin import dec_error_mes, dec_error_mes_state, dec_error_callback_state
 from parameters import admins
+
+
+# получение пользовательского логгера и установка уровня логирования
+py_logger = logging.getLogger(__name__)
+py_logger.setLevel(logging.ERROR)
+
+# настройка обработчика и форматировщика в соответствии с нашими нуждами
+log_file = os.path.join(f"log_directory/{__name__}.log")
+py_handler = logging.FileHandler(log_file, mode='w')
+
+#py_handler = logging.FileHandler(f"{__name__}.log", mode='w')
+py_formatter = logging.Formatter("%(name)s %(asctime)s %(levelname)s %(message)s")
+
+# добавление форматировщика к обработчику
+py_handler.setFormatter(py_formatter)
+# добавление обработчика к логгеру
+py_logger.addHandler(py_handler)
+
 
 admins_list = [value[0] for value in admins.values()]
 notifications_start_var = True
@@ -22,6 +42,7 @@ notifications_start_var = True
 
 # Обработчик команды /take_goods_exel
 # @dp.message_handler(commands=['take_goods_exel'])
+@dec_error_mes
 async def take_goods_exel(message: types.Message):
     result = await export_to_excel("goods")
     if result:
@@ -34,6 +55,7 @@ async def take_goods_exel(message: types.Message):
 
 # Обработчик команды /take_orders_exel
 # @dp.message_handler(commands=['take_orders_exel'])
+@dec_error_mes
 async def take_orders_exel(message: types.Message):
     result = await export_to_excel("orders")
     if result:
@@ -50,6 +72,7 @@ class FSMAdmin_record_start_goods_exel(StatesGroup):
 
 # Обработчик команды /record_goods_exel
 # @dp.message_handler(commands=['record_goods_exel'], state=None)
+@dec_error_mes_state
 async def record_start_goods_exel(message: types.Message, state: FSMContext):
     await FSMAdmin_record_start_goods_exel.start.set()
     async with state.proxy() as data:
@@ -100,6 +123,7 @@ async def record_start_goods_exel(message: types.Message, state: FSMContext):
 
 # Ловим ответ в виде exel файла после команды /record_goods_exel
 # @dp.message_handler(content_types=['document'], state=FSMAdmin_record_start_goods_exel.start,)
+@dec_error_mes_state
 async def record_end_goods_exel(message: types.Message, state: FSMContext):
     # Проверяем тип файла и сохраняем его с именем data.xlsx
     if message.document.mime_type == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
@@ -129,6 +153,7 @@ async def record_end_goods_exel(message: types.Message, state: FSMContext):
 
 
 # @dp.message_handler(IDFilter(admins_list), commands=['admin'])
+@dec_error_mes
 async def commands_Admin(message: types.Message):
     await set_admin_commands(message)
     await message.reply('Вы получили права администратора', reply_markup=kb_admin)
@@ -158,6 +183,7 @@ class FSMAdmin(StatesGroup):
 # Выход из состояний
 # @dp.message_handler(state="*", commands='отмена')
 # @dp.message_handler(filters.Text(equals='отмена', ignore_case=True), state="*")
+@dec_error_mes_state
 async def cancel_handler(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
     if current_state is None:
@@ -182,6 +208,7 @@ async def cancel_handler(message: types.Message, state: FSMContext):
 
 # Начало диалога загрузки нового пункта меню
 # @dp.message_handler(commands='/Добавить_товар', state=None)
+@dec_error_mes_state
 async def cm_start(message: types.Message, state: FSMContext):
     await FSMAdmin.photo.set()
     async with state.proxy() as data:
@@ -192,6 +219,7 @@ async def cm_start(message: types.Message, state: FSMContext):
 
 # Выход из состояний загрузки фото
 # @dp.message_handler(state=FSMAdmin.photo, commands='загрузить')
+@dec_error_mes_state
 async def stop_load_photo(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['message_id_start'] = message.message_id
@@ -203,6 +231,7 @@ async def stop_load_photo(message: types.Message, state: FSMContext):
 
 # Ловим первый ответ и пишем в словарь
 # @dp.message_handler(content_types=['photo'], state=FSMAdmin.photo)
+@dec_error_mes_state
 async def load_photo(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['photo'].append(message.photo[0].file_id)
@@ -218,6 +247,7 @@ async def load_photo(message: types.Message, state: FSMContext):
 
 # Ловим второй ответ на имя
 # @dp.message_handler(state=FSMAdmin.name)
+@dec_error_mes_state
 async def load_name(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['name'] = message.text
@@ -229,6 +259,7 @@ async def load_name(message: types.Message, state: FSMContext):
 
 # Ловим второй ответ на имя
 # @dp.message_handler(state=FSMAdmin.name_english)
+@dec_error_mes_state
 async def load_english_name(message: types.Message, state: FSMContext):
     if check_valid_text(message.text):
         async with state.proxy() as data:
@@ -241,6 +272,7 @@ async def load_english_name(message: types.Message, state: FSMContext):
 
 # Обработчик нажатий на кнопки категорий
 # @dp.callback_query_handler(lambda c: c.data in ["Монобукеты", "Авторские_букеты", "Цветы_в_коробке"], state=FSMAdmin.category)
+@dec_error_callback_state
 async def load_category(callback: types.CallbackQuery, state: FSMContext):
     # Если нажата первая кнопка, открываем подкатегорию
     if callback.data == "Монобукеты":
@@ -272,6 +304,7 @@ async def load_subcategory(callback: types.CallbackQuery, state: FSMContext):
 
 # Ловим пятый ответ на описание
 # @dp.message_handler(state=FSMAdmin.description)
+@dec_error_mes_state
 async def load_description(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['description'] = message.text
@@ -281,42 +314,49 @@ async def load_description(message: types.Message, state: FSMContext):
 
 # Ловим ответ на количество на Калужском шоссе
 # @dp.message_handler(state=FSMAdmin.quantity1)
+@dec_error_mes_state
 async def load_quantity1(message: types.Message, state: FSMContext):
     try:
         async with state.proxy() as data:
             data['quantity1'] = int(message.text)
         await FSMAdmin.quantity2.set()
         await message.answer('Укажи количество на Маяковском переулке')
+
     except ValueError:
         await message.reply(f"Ошибка: {message.text} не является целым числом.\nЖду целое число")
 
 
 # Ловим ответ на количество на Маяковском переулке
 # @dp.message_handler(state=FSMAdmin.quantity2)
+@dec_error_mes_state
 async def load_quantity2(message: types.Message, state: FSMContext):
     try:
         async with state.proxy() as data:
             data['quantity2'] = int(message.text)
         await FSMAdmin.quantity3.set()
         await message.answer('Укажи количество на улице Смольная')
+
     except ValueError:
         await message.reply(f"Ошибка: {message.text} не является целым числом.\nЖду целое число")
 
 
 # Ловим ответ на количество на улице Смольная
 # @dp.message_handler(state=FSMAdmin.quantity3)
+@dec_error_mes_state
 async def load_quantity3(message: types.Message, state: FSMContext):
     try:
         async with state.proxy() as data:
             data['quantity3'] = int(message.text)
         await FSMAdmin.visibility.set()
         await message.answer('Теперь укажи видимость для пользователя', reply_markup=inline_visibility_admin)
+
     except ValueError:
         await message.reply(f"Ошибка: {message.text} не является целым числом.\nЖду целое число")
 
 
 # Ловим ответ на видимость
 # @dp.callback_query_handler(lambda c: c.data in ["Да", "Нет"], state=FSMAdmin.visibility)
+@dec_error_callback_state
 async def load_visibility(callback: types.CallbackQuery, state: FSMContext):
     async with state.proxy() as data:
         data['visibility'] = callback.data
@@ -327,6 +367,7 @@ async def load_visibility(callback: types.CallbackQuery, state: FSMContext):
 
 # Ловим последний ответ и используем полученные данные
 # @dp.message_handler(state=FSMAdmin.price)
+@dec_error_mes_state
 async def load_price(message: types.Message, state: FSMContext):
     try:
         async with state.proxy() as data:
@@ -342,7 +383,12 @@ async def load_price(message: types.Message, state: FSMContext):
             for key in columns_sql[1:]:
                 values_sql.append(data[key])
 
-            await add_positions_sql(table_name="goods", columns=columns_sql, values=values_sql)
+            result = await add_positions_sql(table_name="goods", columns=columns_sql, values=values_sql)
+            if not result:
+                py_logger.error(
+                    f"change_goods_FALSE: данные не записались в базу данных, State: {await state.get_state()}"
+                    f"\nchat_id: {message.chat.id}, values: {values_sql}"
+                )
         await state.finish()
 
 
@@ -352,6 +398,7 @@ async def load_price(message: types.Message, state: FSMContext):
 
 # Начало диалога удаления  пункта меню
 # @dp.message_handler(commands='/Удалить_товар', state=None)
+@dec_error_mes_state
 async def cm_start_delete(message: types.Message, state: FSMContext):
     await FSMAdmin.show_delete.set()
     await message.reply('через / выберите товар', reply_markup=kb_add_admin)
@@ -362,6 +409,7 @@ async def cm_start_delete(message: types.Message, state: FSMContext):
 
 # Показываем выбор удаления
 # @dp.message_handler(state=FSMAdmin.show_delete)
+@dec_error_mes
 async def cm_show_delete(message: types.Message):
     list_name = []
     for ret in await get_positions_sql("name_english", table_name="goods"):
@@ -393,12 +441,17 @@ async def cm_show_delete(message: types.Message):
 
 # Ловим ответ  удаляем данные
 # @dp.callback_query_handler(lambda x: x.data and x.data.startswith('del '), state=FSMAdmin.delete)
+@dec_error_callback_state
 async def cm_delete(callback_query: types.CallbackQuery, state: FSMContext):
     result = await del_positions_sql(table_name="goods", condition="WHERE name = $1",
                                      value=callback_query.data.replace('del ', ''))
     if result:
         await callback_query.answer(text=f"{callback_query.data.replace('del ', '')} удален.", show_alert=True)
     else:
+        py_logger.error(
+            f"change_goods_FALSE: данные не удалились из базы данных, State: {await state.get_state()}"
+            f"\nchat_id: {callback_query.message.chat.id}, callback_query.dat: {callback_query}"
+        )
         await callback_query.answer(text=f"{callback_query.data.replace('del ', '')} не удален\nОшибка!!!",
                                     show_alert=True)
     async with state.proxy() as data:
@@ -411,6 +464,7 @@ async def cm_delete(callback_query: types.CallbackQuery, state: FSMContext):
 
 # Начало диалога изменеия  пункта меню
 # @dp.message_handler(commands='/Изменить_товар', state=None)
+@dec_error_mes_state
 async def cm_start_change(message: types.Message, state: FSMContext):
     await FSMAdmin.show_change.set()
     await message.reply('через / выберите товар', reply_markup=kb_add_admin)
@@ -421,6 +475,7 @@ async def cm_start_change(message: types.Message, state: FSMContext):
 
 # Показываем выбор изменения
 # @dp.message_handler(state=FSMAdmin.show_change)
+@dec_error_mes_state
 async def cm_show_change(message: types.Message, state: FSMContext):
     list_name = []
     for ret in await get_positions_sql("name_english", table_name="goods"):
@@ -468,6 +523,7 @@ async def cm_show_change(message: types.Message, state: FSMContext):
 # Ловим ответ какую строчку поменять
 # @dp.callback_query_handler(lambda x: x.data and (x.data.startswith('visibility ') or x.data.startswith('quantity')
 # or x.data.startswith('price ')), state=FSMAdmin.change)
+@dec_error_callback_state
 async def cm_change(callback_query: types.CallbackQuery, state: FSMContext):
     # await set_admin_commands()
     column_name = callback_query.data.split()[0]
@@ -493,6 +549,10 @@ async def cm_change(callback_query: types.CallbackQuery, state: FSMContext):
             if update:
                 await callback_query.message.answer(text="Видимость изменена", reply_markup=kb_admin)
             else:
+                py_logger.error(
+                    f"change_goods_FALSE: данные не записались в базу данных, State: {await state.get_state()}"
+                    f"\nchat_id: {callback_query.message.chat.id}, Ошибка. Видимость не изменена")
+
                 await callback_query.message.answer(text="Ошибка. Видимость не изменена", reply_markup=kb_admin)
             await callback_query.answer()
             await state.finish()
@@ -510,6 +570,7 @@ async def cm_change(callback_query: types.CallbackQuery, state: FSMContext):
 
 # Ловим ответ и меняем данные
 # @dp.message_handler(state=FSMAdmin.change_end)
+@dec_error_mes_state
 async def cm_change_end(message: types.Message, state: FSMContext):
     try:
         async with state.proxy() as data:
@@ -527,6 +588,8 @@ async def cm_change_end(message: types.Message, state: FSMContext):
         if update:
             await message.answer('вы вернулись в админскую панель!', reply_markup=kb_admin)
         else:
+            py_logger.error(f"change_goods_FALSE: данные не записались в базу данных, State: {await state.get_state()}"
+                            f"\nchat_id: {message.chat.id}, данные: {data['column_name']} {message.text}")
             await message.answer('Ошибка, данные не записались', reply_markup=kb_admin)
     except ValueError:
         await message.reply('не верный формат ввода, введи еще раз')

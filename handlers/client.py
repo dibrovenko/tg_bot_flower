@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import re
 import time
 import datetime as dt
+import os
 
 import phonenumbers
 from aiogram.dispatcher import FSMContext, filters
@@ -30,27 +31,36 @@ from yandex.cancellation_order import cancellation_order
 from yandex.confirmation_order import confirmation_order
 from parameters import admins, collectors
 from yandex.get_lat_lon_from_address import get_lan_lon_from_addrees
+from error_decorators.client import dec_error_mes, dec_error_mes_state, dec_error_callback_state, \
+    dec_error_mes_state_pay, dec_error_mes_state_collector
+
+import logging
+
+# получение пользовательского логгера и установка уровня логирования
+py_logger = logging.getLogger(__name__)
+py_logger.setLevel(logging.DEBUG)
+
+# настройка обработчика и форматировщика в соответствии с нашими нуждами
+log_file = os.path.join(f"log_directory/{__name__}.log")
+py_handler = logging.FileHandler(log_file, mode='w')
+
+#py_handler = logging.FileHandler(f"{__name__}.log", mode='w')
+py_formatter = logging.Formatter("%(name)s %(asctime)s %(levelname)s %(message)s")
+
+# добавление форматировщика к обработчику
+py_handler.setFormatter(py_formatter)
+# добавление обработчика к логгеру
+py_logger.addHandler(py_handler)
+
 
 admins_list = [value[0] for value in admins.values()]
 collector_list = [value[0] for value in collectors.values()]
 
 
-def handle_error(func):
-    async def wrapper(message: types.Message):
-        try:
-            #print(*args)
-            #print(type(*args))
-            return await func(message)
-        except Exception as e:
-            # Обработка ошибки
-            await message.answer(f"Ошибка: {e}")
-    return wrapper
-
-
 # @dp.message_handler(commands = ['start', 'help'])
-@handle_error
+@dec_error_mes
 async def commands_start(message: types.Message):
-    print(2/0)
+
     if message.chat.id in admins_list:
         await set_admin_commands(message=message)
         await bot.send_message(message.from_user.id, f'Вы получили права администратора',
@@ -65,8 +75,8 @@ async def commands_start(message: types.Message):
                                reply_markup=kb_client)
 
 
-
 #@dp.message_handler(commands = ['client'])
+@dec_error_mes
 async def commands_client(message: types.Message):
     await set_client_commands2(message=message)
     await bot.send_message(message.from_user.id, f'Это магазин, который позволит быстро и дешево купить цветы !',
@@ -74,6 +84,7 @@ async def commands_client(message: types.Message):
 
 
 # @dp.message_handler(commands = ['Меню'])
+@dec_error_mes
 async def commands_menu(message: types.Message):
     result = await get_positions_sql("*", table_name="goods")
     if result is not None:
@@ -93,11 +104,13 @@ async def commands_menu(message: types.Message):
             await message.answer_media_group(media=album)
 
     else:
+        py_logger.error(f"Ошибка: \Меню ")
         await message.answer("ошибка")
 
 
 
 # @dp.message_handler(commands = ['поддержка'])
+@dec_error_mes
 async def commands_help(message: types.Message):
     await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id - 1)
     await bot.send_message(message.from_user.id,
@@ -130,6 +143,7 @@ class TimeError(Exception):
 
 # Начало диалога регистрации
 # @dp.message_handler(commands='/Купить', state=None)
+@dec_error_mes_state
 async def cm_start_registration(message: types.Message, state: FSMContext):
     name_english = "rose_silva_pink"
     name = full_cost_without_delivery = price = None
@@ -171,7 +185,7 @@ async def cm_start_registration(message: types.Message, state: FSMContext):
             for i in range(6, 9):
                 if ret[i] >= quantity:
                     available_points.append(points[i - 6])
-            print(available_points)
+            py_logger.info(f"available_points: {available_points}, chat_id: {message.chat.id}")
             album = types.MediaGroup()
             matches = re.findall(r"'(.*?)'", ret[0])
             for i, match in enumerate(matches):
@@ -212,6 +226,7 @@ async def cm_start_registration(message: types.Message, state: FSMContext):
 
 # Подтверждение регистрации
 #@dp.callback_query_handler(lambda c: c.data in ['Yes', 'No'], state=FSMRegistration.name_tg)
+@dec_error_callback_state
 async def cm_confirmation_registration(callback: types.CallbackQuery, state: FSMContext):
     async with state.proxy() as data:
         last_order = data['last_order']
@@ -233,13 +248,15 @@ async def cm_confirmation_registration(callback: types.CallbackQuery, state: FSM
                         f" чтобы внести изменения."
 
             await callback.message.delete()
-
             data['message_back'] = {}
             data['message_back']["last_info_use"] = data['message_id_start'] \
                 = await callback.message.answer(text=last_info,  parse_mode="Markdown",
                                                 reply_markup=InlineKeyboardMarkup().
                                                 insert(InlineKeyboardButton(f'Использовать', callback_data=f"use")).
                                                 insert(InlineKeyboardButton(f'Изменить', callback_data=f"not_use")))
+
+            await bot.send_sticker(chat_id=callback.message.chat.id, reply_markup=kb_client_registration_start,
+                                   sticker=r"CAACAgEAAxkBAAEKCUlk3AX6n7tjFFU4tc8Iyb3gDNqCjwACAQEAAjgOghGnDJ2bCyTkQDAE")
             asyncio.create_task(
                 delete_messages(callback.message.chat.id, callback.message.message_id + 1,
                                 data['message_id_start'].message_id, 0.5, 0.3))
@@ -259,6 +276,7 @@ async def cm_confirmation_registration(callback: types.CallbackQuery, state: FSM
 
         await callback.answer("Да")
         await FSMRegistration.name_real.set()
+        #await FSMRegistration.last_order.set()
 
         task = asyncio.create_task(
             calculate_price_dostavista(lat=float(lat_lon.split()[1]), lon=float(lat_lon.split()[0]), address=address,
@@ -307,13 +325,18 @@ async def cm_confirmation_registration(callback: types.CallbackQuery, state: FSM
 
 # Обработчик callback-кнопки с data "use" и "not_use"
 #@dp.callback_query_handler(lambda c: c.data in ['use', 'not_use'], state=FSMRegistration.name_real)
+@dec_error_callback_state
 async def cm_last_order(callback: types.CallbackQuery, state: FSMContext):
+
     if callback.data == "use":
         await callback.answer("Вы нажали на кнопку 'Использовать'")
         await FSMRegistration.comment_collector.set()
         async with state.proxy() as data:
             data["last_info_use"] = True
-            comment_collector= data["comment_collector"]
+            comment_collector = data["comment_collector"]
+            asyncio.create_task(
+                delete_messages(callback.message.chat.id, data['message_id_start'].message_id + 1,
+                                data['message_id_start'].message_id+2, 0, 0))
         await cm_comment_collector_registration(message=callback.message, state=state,
                                                 comment_collector=comment_collector)
     else:
@@ -321,13 +344,14 @@ async def cm_last_order(callback: types.CallbackQuery, state: FSMContext):
         await callback.message.delete()
         async with state.proxy() as data:
             data["last_info_use"] = False
+            data['last_order'] = False
             data['message_back'] = {}
             data['message_back']["phone"] = \
                 data['message_id_start'] = await callback.message.answer(text=f"Как вас зовут?",
                                                                          reply_markup=kb_client_registration_start)
             asyncio.create_task(
                 delete_messages(callback.message.chat.id, callback.message.message_id + 1,
-                                data['message_id_start'].message_id, 0.5, 0.3))
+                                data['message_id_start'].message_id, 0, 0))
         await FSMRegistration.name_real.set()
         global t
         if callback.message.chat.id in t:
@@ -336,6 +360,7 @@ async def cm_last_order(callback: types.CallbackQuery, state: FSMContext):
 
 #Выход из состояний
 #@dp.message_handler(filters.Text(equals='отмена ✕', ignore_case=True), state="*")
+@dec_error_mes_state
 async def cancel_handler(message: types.Message, state: FSMContext):
     global t, t_order, t_dostavista, t_yandex
     if message.chat.id in t:
@@ -352,17 +377,21 @@ async def cancel_handler(message: types.Message, state: FSMContext):
             delete_messages(message.chat.id, data['message_id_buy'], message.message_id + 1, 0, 0))
         try:
             asyncio.create_task(cancellation_order(id=data['result_calculate_price_yandex'][2]))
-        except:
+        except Exception as e:
+            py_logger.error(f"State: {await state.get_state()},  cancellation_order не отменена, Ошибка: {e}, "
+                            f"chat.id: {message.chat.id}")
             pass
 
     await message.answer('OK', reply_markup=kb_client)
+    py_logger.info(f"State: {await state.get_state()},  chat.id: {message.chat.id}")
     await state.finish()
-
 
 
 #Возвращение на предыдущее состояние
 #@dp.message_handler(filters.Text(equals='назад ⤴', ignore_case=True), state="*")
+@dec_error_mes_state
 async def back_handler(message: types.Message, state: FSMContext):
+    py_logger.debug(f"State: {await state.get_state()},  chat.id: {message.chat.id}")
     current_state = await state.get_state()
     global t, t_dostavista, t_yandex
     if message.chat.id in t and current_state[16:] == "comment_courier":
@@ -411,8 +440,9 @@ async def back_handler(message: types.Message, state: FSMContext):
                 t_yandex.pop(message.chat.id).cancel()
                 try:
                     asyncio.create_task(cancellation_order(id=data['result_calculate_price_yandex'][2]))
-                except:
-                    pass
+                except Exception as e:
+                    py_logger.error(f"State: {await state.get_state()},  cancellation_order не отменена, Ошибка: {e}, "
+                                    f"chat.id: {message.chat.id}")
             return
 
 
@@ -429,13 +459,14 @@ async def back_handler(message: types.Message, state: FSMContext):
         t_yandex.pop(message.chat.id).cancel()
         try:
             asyncio.create_task(cancellation_order(id=data['result_calculate_price_yandex'][2]))
-        except:
-            pass
-
+        except Exception as e:
+            py_logger.error(f"State: {await state.get_state()},  cancellation_order не отменена, Ошибка: {e}, "
+                            f"chat.id: {message.chat.id}")
 
 
 # получаем имя пользователя
 #@dp.message_handler(state=FSMRegistration.name_real)
+@dec_error_mes_state
 async def cm_name_registration(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         if data['last_order']:
@@ -453,10 +484,10 @@ async def cm_name_registration(message: types.Message, state: FSMContext):
         await FSMRegistration.phone.set()
 
 
-
 # получаем номер телефона
 #@dp.message_handler(content_types=ContentType.CONTACT, state=FSMRegistration.phone)
 #@dp.message_handler(lambda message: func_for_valid_phone_number(message.text), state=FSMRegistration.phone)
+@dec_error_mes_state
 async def cm_phone_registration(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         if message.text is None:
@@ -481,9 +512,9 @@ async def cm_phone_registration(message: types.Message, state: FSMContext):
         await FSMRegistration.phone2.set()
 
 
-
 # получаем неверный номер телефона
 #@dp.message_handler(content_types=[types.ContentType.ANY], state=FSMRegistration.phone)
+@dec_error_mes_state
 async def cm_phone_wrong_registration(message: types.Message, state: FSMContext):
     await message.answer(text=f"Неверные данные, просто нажмите на кнопку _'Поделиться номером'_ снизу👇 или введите номер вручную",
                          parse_mode="Markdown")
@@ -496,6 +527,7 @@ async def cm_phone_wrong_registration(message: types.Message, state: FSMContext)
 # получаем второй номер телефона
 #@dp.message_handler(content_types=ContentType.CONTACT, state=FSMRegistration.phone2)
 #@dp.message_handler(lambda message: func_for_valid_phone_number(message.text), state=FSMRegistration.phone2)
+@dec_error_mes_state
 async def cm_phone2_registration(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         await bot.send_sticker(chat_id=message.chat.id,
@@ -524,6 +556,7 @@ async def cm_phone2_registration(message: types.Message, state: FSMContext):
 
 # получаем неверный второй номер телефона
 #@dp.message_handler(content_types=[types.ContentType.ANY], state=FSMRegistration.phone2)
+@dec_error_mes_state
 async def cm_phone2_wrong_registration(message: types.Message, state: FSMContext):
     await bot.send_sticker(chat_id=message.chat.id,
                            sticker=r"CAACAgEAAxkBAAEJuLBktbFiUkIgTMwqy86kHA7A5yuFhgACGgEAAjgOghG-CmKJFmOt7C8E")
@@ -537,6 +570,7 @@ async def cm_phone2_wrong_registration(message: types.Message, state: FSMContext
 
 # получаем адрес доставки
 #@dp.message_handler(content_types=[types.ContentType.ANY], state=FSMRegistration.address)
+@dec_error_mes_state
 async def cm_address_registration(message: types.Message, state: FSMContext):
     list_address_correctness_check = address_correctness_check(message=message)
     if list_address_correctness_check[0]:
@@ -548,6 +582,8 @@ async def cm_address_registration(message: types.Message, state: FSMContext):
             data['address_lat'] = list_address_correctness_check[3]
             data['address_lon'] = list_address_correctness_check[2]
             data['address'] = list_address_correctness_check[1]
+            py_logger.info(f"State: {await state.get_state()}, chat.id: {message.chat.id},"
+                           f" address: {data['address']}")
             asyncio.create_task(
                 delete_messages(message.chat.id, data['message_id_start']['message_id']+1, message.message_id, 5, 2))
 
@@ -589,9 +625,9 @@ async def cm_address_registration(message: types.Message, state: FSMContext):
         await FSMRegistration.address.set()
 
 
-
 # получаем коммент для курьера
 #@dp.message_handler(state=FSMRegistration.comment_courier)
+@dec_error_mes_state
 async def cm_comment_courier_registration(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         if message.text == "Пропустить":
@@ -609,9 +645,9 @@ async def cm_comment_courier_registration(message: types.Message, state: FSMCont
         await FSMRegistration.comment_collector.set()
 
 
-
 # получаем коммент для сбощика и формируем способы доставки
 #@dp.message_handler(state=FSMRegistration.comment_collector)
+@dec_error_mes_state_collector
 async def cm_comment_collector_registration(message: types.Message, state: FSMContext, comment_collector=None):
     await FSMRegistration.way_of_delivery.set()
     async with state.proxy() as data:
@@ -678,14 +714,16 @@ async def cm_comment_collector_registration(message: types.Message, state: FSMCo
                 break
 
         except TimeError:
+            py_logger.error(f"State: {await state.get_state()}, Ошибка: {TimeError},  chat.id: {message.chat.id}")
             await state.finish()
             await message.answer("Приносим свои извинения. Что-то пошло не так, перезапустите бота /start",
                                  reply_markup=kb_client)
             return
 
-        except:
+        except Exception as e:
+            py_logger.info(f"State: {await state.get_state()}, Ошибка: {e}")
             await bot.send_chat_action(message.chat.id, ChatActions.TYPING)
-            await asyncio.sleep(1.5)
+            await asyncio.sleep(2)
             counter += 1
 
 
@@ -695,6 +733,7 @@ async def cm_comment_collector_registration(message: types.Message, state: FSMCo
 
     current_state = await state.get_state()
     if current_state[16:] != "way_of_delivery":
+        py_logger.info(f"State: {await state.get_state()}, Ошибка: if current_state[16:] != way_of_delivery")
         asyncio.create_task(cancellation_order(id=result_calculate_price_yandex[2]))
         return
 
@@ -714,12 +753,14 @@ async def cm_comment_collector_registration(message: types.Message, state: FSMCo
     t_yandex[message.chat.id] = task_yandex
 
 
-
 ######ловим варианты доставки
 #@dp.callback_query_handler(
     #lambda x: x.data and (x.data.startswith('Express') or x.data.startswith('Today') or x.data.startswith('tomorrow')),
     #state=FSMRegistration.way_of_delivery)
+@dec_error_callback_state
 async def cm_way_of_delivery_registration(callback: types.CallbackQuery, state: FSMContext):
+    py_logger.debug(f"State: {await state.get_state()}, Callback {callback.data}")
+
     async with state.proxy() as data:
         data["counter_way_of_delivery"] = True
         match callback.data:
@@ -961,9 +1002,10 @@ async def cm_way_of_delivery_registration(callback: types.CallbackQuery, state: 
                                     callback.message.message_id + 1, 0, 0))
 
 
-
 #@dp.callback_query_handler(lambda c: c.data == 'stop_pay', state=FSMRegistration.payment)
+@dec_error_callback_state
 async def cancellation_of_payment(callback: types.CallbackQuery, state: FSMContext):
+    py_logger.info(f"STOP PAY, State: {await state.get_state()}, chat.id: {callback.message.chat.id}")
     asyncio.create_task(
             delete_messages(callback.message.chat.id, callback.message.message_id, callback.message.message_id + 1, 0, 0))
     await callback.answer("Вы нажали 'отмена'")
@@ -976,13 +1018,14 @@ async def cancellation_of_payment(callback: types.CallbackQuery, state: FSMConte
             t_yandex.pop(data['message_id_start'].chat.id).cancel()
         try:
             asyncio.create_task(cancellation_order(id=data['result_calculate_price_yandex'][2]))
-        except:
-            pass
+        except Exception as e:
+            py_logger.error(f"State: {await state.get_state()},  cancellation_order не отменена, Ошибка: {e}")
     await state.finish()
 
 
 #@dp.pre_checkout_query_handler(lambda query: True, state=FSMRegistration.payment)
 async def pre_checkout_query(pre_checkout_q: types.PreCheckoutQuery, state: FSMContext):
+    py_logger.info(f"PAY, pre_checkout_q {pre_checkout_q}")
     await bot.answer_pre_checkout_query(pre_checkout_q.id, ok=True)
     global t_order, t_yandex
     async with state.proxy() as data:
@@ -994,14 +1037,17 @@ async def pre_checkout_query(pre_checkout_q: types.PreCheckoutQuery, state: FSMC
 
 #@dp.pre_checkout_query_handler(lambda query: True, state="*")
 async def pre_checkout_query_false(pre_checkout_q: types.PreCheckoutQuery, state: FSMContext):
-  await bot.answer_pre_checkout_query(pre_checkout_q.id, ok=False,
+    py_logger.error(f"PAY_FALSE, pre_checkout_q {pre_checkout_q}, State: {await state.get_state()}")
+    await bot.answer_pre_checkout_query(pre_checkout_q.id, ok=False,
                                       error_message="к сожалению, изменилась стоимость доставки")
 
 
 
 # successful payment
 #@dp.message_handler(content_types=types.ContentType.SUCCESSFUL_PAYMENT, state=FSMRegistration.payment)
+@dec_error_mes_state_pay
 async def successful_payment(message: types.Message, state: FSMContext):
+    py_logger.info(f"State: {await state.get_state()} \n message: {message}, chat_id: {message.chat.id}")
     await FSMRegistration.payment_success.set()
     async with state.proxy() as data:
         global t_order
@@ -1011,15 +1057,20 @@ async def successful_payment(message: types.Message, state: FSMContext):
         delete_messages(message.chat.id, message.message_id-1, message.message_id, 0, 0))
     async with state.proxy() as data:
         if data['way_of_delivery'] == "Express":
+            py_logger.info(f"State: {await state.get_state()} \n data['way_of_delivery'] == Express,"
+                           f" chat_id: {message.chat.id}")
             time = 'Время: ⚡️️как можно быстрее'
             data["time_delivery_sql"] = datetime.now().replace(second=0, microsecond=0)
             try:
                 number_order = data['result_calculate_price_yandex'][2]
                 #подтерждаем заказ в yandex # asyncio.create_task(confirmation_order(id=number_order))
-            except:
-                pass
+            except Exception as e:
+                py_logger.error(f"number_order_FALSE: {e}, State: {await state.get_state()} \n "
+                                f"data['way_of_delivery'] == Express, chat_id: {message.chat.id}")
 
         elif data['way_of_delivery'] == "Today":
+            py_logger.info(f"State: {await state.get_state()} \n data['way_of_delivery'] == Today,"
+                           f" chat_id: {message.chat.id}")
             data["time_delivery_sql"] = dt.datetime.combine(dt.date.today(),
                                                             dt.time(int(data['time_delivery'][:2]),
                                                                     int(data['time_delivery'][3:5])))
@@ -1027,10 +1078,13 @@ async def successful_payment(message: types.Message, state: FSMContext):
             try:
                 number_order = str(uuid.uuid4())
                 asyncio.create_task(cancellation_order(id=data['result_calculate_price_yandex'][2]))
-            except:
-                pass
+            except Exception as e:
+                py_logger.error(f"number_order_FALSE, State: {await state.get_state()} \n "
+                                f"data['way_of_delivery'] == Today, chat_id: {message.chat.id}")
 
         else:
+            py_logger.info(f"State: {await state.get_state()} \n data['way_of_delivery'] == Tomorrow,"
+                           f" chat_id: {message.chat.id}")
             data["time_delivery_sql"] = dt.datetime.combine(dt.date.today() + dt.timedelta(days=1),
                                                             dt.time(int(data['time_delivery'][:2]),
                                                                     int(data['time_delivery'][3:5])))
@@ -1038,8 +1092,9 @@ async def successful_payment(message: types.Message, state: FSMContext):
             try:
                 number_order = str(uuid.uuid4())
                 asyncio.create_task(cancellation_order(id=data['result_calculate_price_yandex'][2]))
-            except:
-                pass
+            except Exception as e:
+                py_logger.error(f"number_order_FALSE: {e}, State: {await state.get_state()} \n "
+                                f"data['way_of_delivery'] == Tomorrow, chat_id: {message.chat.id}")
 
         comment_courier = "Нет инф. для курьера"
         comment_collector = "Нет инф. для сбощика"
@@ -1081,11 +1136,12 @@ async def successful_payment(message: types.Message, state: FSMContext):
         result_record = await add_positions_sql(table_name="orders", columns=columns_sql, values=values_sql)
         global collectors
         if result_record is False:
+            py_logger.error(f"number_order_FALSE: данные не записались в базу данных, State: {await state.get_state()}"
+                            f"\nchat_id: {message.chat.id}")
             await bot.send_message(chat_id=collectors[data['point_start_delivery']][0],
                                    text=f"Не записались данные, напишите админу\n\n{columns_sql} {values_sql}")
 
     await state.finish()
-
 
 
 # Регистрируем хендлеры
@@ -1094,7 +1150,6 @@ def register_handlers_clients(dp: Dispatcher):
     dp.register_message_handler(commands_client, IDFilter(admins_list + collector_list),  commands=['client'])
     dp.register_message_handler(commands_menu, commands=['Меню'])
     dp.register_message_handler(commands_help, commands=['поддержка'])
-
 
     dp.register_message_handler(cm_start_registration, commands=['Купить'], state=None)
     dp.register_callback_query_handler(cm_confirmation_registration, lambda c: c.data in ['Yes', 'No'],
@@ -1128,8 +1183,4 @@ def register_handlers_clients(dp: Dispatcher):
     dp.register_pre_checkout_query_handler(pre_checkout_query_false, lambda query: True, state="*")
     dp.register_message_handler(successful_payment, content_types=types.ContentType.SUCCESSFUL_PAYMENT,
                                 state=FSMRegistration.payment)
-
-
-
-
 
