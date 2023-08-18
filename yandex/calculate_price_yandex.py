@@ -38,7 +38,7 @@ async def calculate_price_yandex(lat: float, lon: float, address: str, available
     :param comment_client:
     """
     try:
-        now = datetime.datetime.now() - datetime.timedelta(hours=10) #- datetime.timedelta(minutes=20)
+        now = datetime.datetime.now() - datetime.timedelta(hours=15) #- datetime.timedelta(minutes=20)
         if now.hour < 9 or now.hour > 19:
             py_logger.info(f"calculate_price_yandex data_for_return: {[False]}")
             return [False]

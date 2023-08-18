@@ -52,12 +52,12 @@ async def sql_start():
     )
 
     await con.execute(
-        'CREATE TABLE IF NOT EXISTS orders(number UUID PRIMARY KEY, name_english TEXT, name TEXT, quantity INTEGER, '
+        'CREATE TABLE IF NOT EXISTS orders(number VARCHAR(40) PRIMARY KEY, name_english TEXT, name TEXT, quantity INTEGER, '
         'delivery_cost FLOAT, flower_cost FLOAT, pack_cost FLOAT, discount FLOAT, promo_code VARCHAR(32), '
-        'full_cost FLOAT, name_client TEXT, phone_client VARCHAR(15), name_tg_client VARCHAR(32), chat_id_client INTEGER, '
-        'phone_client2 VARCHAR(15), address TEXT, way_of_delivery TEXT, time_delivery TIMESTAMP, link_delivery TEXT, '
-        'comment_courier TEXT, comment_collector TEXT, message_id_client INTEGER, message_id_collector INTEGER,'
-        'status_order TEXT, step_collector TEXT, point_start_delivery TEXT, mark INTEGER)'
+        'full_cost FLOAT, name_client TEXT, phone_client VARCHAR(15), name_tg_client VARCHAR(32), chat_id_client BIGINT, '
+        'phone_client2 VARCHAR(15), address TEXT, way_of_delivery TEXT, time_delivery TIMESTAMP, link_collector TEXT, '
+        'link_client TEXT, comment_courier TEXT, comment_collector TEXT, message_id_client BIGINT, '
+        'message_id_collector BIGINT, status_order TEXT, step_collector TEXT, point_start_delivery TEXT, mark INTEGER)'
     )
     await con.close()
 
@@ -93,23 +93,31 @@ async def add_positions_sql(table_name: str, columns: list, values: list):
 async def get_positions_sql(*args: str, table_name: str, condition=None, condition_value=None):
     con = await connect_to_base()
     try:
+        py_logger.info(f"get_positions_sql запустилась")
         # Формирование SQL-запроса
         query = "SELECT "
 
         # Добавление столбцов в запрос
         query += ", ".join(args) + f" FROM {table_name}"
+        py_logger.info(f"query: {query}")
 
         # Добавление условия в запрос (если оно указано)
         if condition and condition_value:
             query += " " + condition
+            py_logger.debug(f"query: {query} {condition_value}")
             result = await con.fetch(query, condition_value)
+            py_logger.debug(f"result: {result}")
 
         elif condition:
             query += " " + condition
+            py_logger.debug(f"query: {query}")
             result = await con.fetch(query)
+            py_logger.debug(f"result: {result}")
 
         else:
+            py_logger.info(f"query: {query}")
             result = await con.fetch(query)
+            py_logger.debug(f"result: {result}")
 
     except Exception as e:
         # Возврат значения по умолчанию в случае ошибки
@@ -271,9 +279,9 @@ async def export_to_excel(table_name=None):
                            "orders": ["number", "name_english", "name", "quantity", "delivery_cost", "flower_cost",
                                       "pack_cost", "discount", "promo_code", "full_cost", "name_client", "phone_client",
                                       "name_tg_client", "chat_id_client", "phone_client2", "address", "way_of_delivery",
-                                      "time_delivery", "link_delivery", "comment_courier", "comment_collector",
-                                      "message_id_client", "message_id_collector", "status_order", "step_collector",
-                                      "point_start_delivery", "mark"]}
+                                      "time_delivery", "link_collector", "link_client", "comment_courier",
+                                      "comment_collector", "message_id_client", "message_id_collector", "status_order",
+                                      "step_collector", "point_start_delivery", "mark"]}
             # Создание DataFrame из результата запроса
             df = pd.DataFrame(result, columns=dict_colums[table_name])
             # Экспорт DataFrame в Excel таблицу

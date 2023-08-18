@@ -58,7 +58,8 @@ async def calculate_price_dostavista(lat: float, lon: float, address: str, vehic
         }
 
         #запускаем цикл по получению цен на доставку на завтра
-        time_to_create_list = datetime.datetime.now().astimezone().replace(hour=8, minute=0, second=0, microsecond=0) + datetime.timedelta(hours=24)
+        time_to_create_list = datetime.datetime.now().astimezone().\
+                                  replace(hour=8, minute=0, second=0, microsecond=0) + datetime.timedelta(hours=24)
         while time_to_create_list.hour < 19 or (time_to_create_list.hour == 19 and time_to_create_list.minute == 0):
 
             min_value_list = [100000, "test"]
@@ -116,10 +117,7 @@ async def calculate_price_dostavista(lat: float, lon: float, address: str, vehic
         if rounded_time.hour < 19 or (rounded_time.hour == 19 and rounded_time.minute == 0):
             while rounded_time.hour < 19 or (rounded_time.hour == 19 and rounded_time.minute == 0):
                 if rounded_time.hour > 7:
-                    time_when_taking = {"start": (rounded_time + datetime.timedelta(hours=1)).isoformat(),
-                                        "end": (rounded_time + datetime.timedelta(hours=2)).isoformat()}
-                    time_when_giving = {"start": (rounded_time + datetime.timedelta(hours=2)).isoformat(),
-                                        "end": (rounded_time + datetime.timedelta(hours=3)).isoformat()}
+
                     min_value_list = [100000, "test"]
                     for key in new_dict_start_point:
                         data = {
@@ -143,6 +141,7 @@ async def calculate_price_dostavista(lat: float, lon: float, address: str, vehic
                                 }]
                         }
 
+                        py_logger.info(f"data: {data}")
                         ssl_context = ssl.create_default_context()
                         ssl_context.check_hostname = False
                         ssl_context.verify_mode = ssl.CERT_NONE
@@ -160,7 +159,6 @@ async def calculate_price_dostavista(lat: float, lon: float, address: str, vehic
                 rounded_time += datetime.timedelta(hours=1)
         else:
             data_for_return["today"] = False
-
         py_logger.info(f"price data_for_return: {data_for_return}")
         return data_for_return
 
