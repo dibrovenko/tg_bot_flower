@@ -9,7 +9,7 @@ from dotenv import load_dotenv, find_dotenv
 
 
 py_logger = logging.getLogger(__name__)
-py_logger.setLevel(logging.ERROR)
+py_logger.setLevel(logging.DEBUG)
 
 # настройка обработчика и форматировщика в соответствии с нашими нуждами
 log_file = os.path.join(f"log_directory/{__name__}.log")
@@ -52,12 +52,14 @@ async def sql_start():
     )
 
     await con.execute(
-        'CREATE TABLE IF NOT EXISTS orders(number VARCHAR(40) PRIMARY KEY, name_english TEXT, name TEXT, quantity INTEGER, '
-        'delivery_cost FLOAT, flower_cost FLOAT, pack_cost FLOAT, discount FLOAT, promo_code VARCHAR(32), '
-        'full_cost FLOAT, name_client TEXT, phone_client VARCHAR(15), name_tg_client VARCHAR(32), chat_id_client BIGINT, '
-        'phone_client2 VARCHAR(15), address TEXT, way_of_delivery TEXT, time_delivery TIMESTAMP, link_collector TEXT, '
-        'link_client TEXT, comment_courier TEXT, comment_collector TEXT, message_id_client BIGINT, '
-        'message_id_collector BIGINT, status_order TEXT, step_collector TEXT, point_start_delivery TEXT, mark INTEGER)'
+        'CREATE TABLE IF NOT EXISTS orders(number VARCHAR(40) PRIMARY KEY, name_english TEXT, name TEXT, quantity '
+        'INTEGER, delivery_cost FLOAT, flower_cost FLOAT, pack_cost FLOAT, discount FLOAT, promo_code VARCHAR(32), '
+        'full_cost FLOAT, name_client TEXT, phone_client VARCHAR(15), name_tg_client VARCHAR(32), chat_id_client '
+        'BIGINT, phone_client2 VARCHAR(15), address TEXT, way_of_delivery TEXT, time_delivery TIMESTAMP, '
+        'time_delivery_end TIMESTAMP, link_collector TEXT, link_client TEXT, comment_courier TEXT, '
+        'comment_collector TEXT, message_id_client BIGINT, message_id_collector BIGINT, status_order TEXT, '
+        'step_collector TEXT, point_start_delivery TEXT, mark INTEGER, message_id_client2 BIGINT, '
+        'message_id_collector2 BIGINT, courier_name TEXT, courier_phone VARCHAR(15), img TEXT)'
     )
     await con.close()
 
@@ -71,7 +73,9 @@ async def add_positions_sql(table_name: str, columns: list, values: list):
                 f"({', '.join([f'${index + 1}' for index, _ in enumerate(values)])})"
 
         # Выполняем запрос с переданными значениями
-        await con.execute(query, *values)
+        py_logger.info(f"add_positions_sql query: {query}, {values}")
+        record = await con.execute(query, *values)
+        py_logger.info(f"record: {record}")
 
         # Выполнение уведомления об изменении
         if table_name == "goods":
@@ -176,6 +180,7 @@ async def update_positions_sql(table_name: str, column_values: dict, condition=N
             query += f" {condition}"
 
         # Выполнение SQL-запроса
+        py_logger.info(f"query: {query}")
         await con.execute(query)
         # Выполнение уведомления об изменении
         if table_name == "goods":
@@ -279,9 +284,11 @@ async def export_to_excel(table_name=None):
                            "orders": ["number", "name_english", "name", "quantity", "delivery_cost", "flower_cost",
                                       "pack_cost", "discount", "promo_code", "full_cost", "name_client", "phone_client",
                                       "name_tg_client", "chat_id_client", "phone_client2", "address", "way_of_delivery",
-                                      "time_delivery", "link_collector", "link_client", "comment_courier",
-                                      "comment_collector", "message_id_client", "message_id_collector", "status_order",
-                                      "step_collector", "point_start_delivery", "mark"]}
+                                      "time_delivery", "time_delivery_end", "link_collector", "link_client",
+                                      "comment_courier", "comment_collector", "message_id_client",
+                                      "message_id_collector", "status_order", "step_collector", "point_start_delivery",
+                                      "mark", "message_id_client2",  "message_id_collector2", "courier_name",
+                                      "courier_phone", "img"]}
             # Создание DataFrame из результата запроса
             df = pd.DataFrame(result, columns=dict_colums[table_name])
             # Экспорт DataFrame в Excel таблицу

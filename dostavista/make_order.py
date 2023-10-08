@@ -50,9 +50,9 @@ async def dostavista_make_order(address: str, lat: float, lon: float, phone: str
 
     # параметры запроса для dostavista
     load_dotenv(find_dotenv())
-    api_key = os.getenv('api_key_dostavista_test')
+    api_key = os.getenv('api_key_dostavista')
 
-    url = 'https://robotapitest.dostavista.ru/api/business/1.3/create-order'
+    url = 'https://robot.dostavista.ru/api/business/1.3/create-order'
 
     headers = {
         'X-DV-Auth-Token': api_key,
@@ -62,8 +62,8 @@ async def dostavista_make_order(address: str, lat: float, lon: float, phone: str
     try:
         data = {
             "type": "standard",
-            # "payment_method": "bank_card",
-            # "bank_card_id": "0",
+            "payment_method": "bank_card",
+            "bank_card_id": 3903871,
             "is_client_notification_enabled": True,
             "is_contact_person_notification_enabled": True,
             "vehicle_type_id": 6,

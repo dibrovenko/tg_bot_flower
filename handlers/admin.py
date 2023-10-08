@@ -70,8 +70,8 @@ class FSMAdmin_record_start_goods_exel(StatesGroup):
     start = State()
 
 
-# Обработчик команды /record_goods_exel
-# @dp.message_handler(commands=['record_goods_exel'], state=None)
+# Обработчик команды /record_goods_excel
+# @dp.message_handler(commands=['record_goods_excel'], state=None)
 @dec_error_mes_state
 async def record_start_goods_exel(message: types.Message, state: FSMContext):
     await FSMAdmin_record_start_goods_exel.start.set()
@@ -115,13 +115,14 @@ async def record_start_goods_exel(message: types.Message, state: FSMContext):
         await message.answer("В данный момент другой администратор уже осуществляет изменения, поэтому в настоящее "
                              "время невозможно внести изменения.", reply_markup=kb_admin)
         await state.finish()
+        notifications_start_var = True
 
     else:
         await message.answer("ошибка на сервере", reply_markup=kb_admin)
         await state.finish()
 
 
-# Ловим ответ в виде exel файла после команды /record_goods_exel
+# Ловим ответ в виде exel файла после команды /record_goods_exсel
 # @dp.message_handler(content_types=['document'], state=FSMAdmin_record_start_goods_exel.start,)
 @dec_error_mes_state
 async def record_end_goods_exel(message: types.Message, state: FSMContext):
@@ -195,13 +196,23 @@ async def cancel_handler(message: types.Message, state: FSMContext):
         await message.reply('Хорошо, изменения не будут сохранены', reply_markup=kb_admin)
         await state.finish()
         await set_admin_commands(message)
+
+    elif current_state == FSMAdmin_record_start_goods_exel.start.state:
+        async with state.proxy() as data:
+            asyncio.create_task(
+                delete_messages(message.chat.id, data['start_message_id'], message.message_id + 1, 4, 0))
+        await message.reply('хорошо', reply_markup=kb_admin)
+        # останавляем прослушивание изменений базы данных
+        global notifications_start_var
+        notifications_start_var = notifications_start_var.cancel()
+        await state.finish()
+        await set_admin_commands(message)
+
     else:
         async with state.proxy() as data:
             asyncio.create_task(
                 delete_messages(message.chat.id, data['start_message_id'], message.message_id + 1, 4, 0))
         await message.reply('OK', reply_markup=kb_admin)
-        global notifications_start_var
-        notifications_start_var = True
         await state.finish()
         await set_admin_commands(message)
 
@@ -390,7 +401,6 @@ async def load_price(message: types.Message, state: FSMContext):
                     f"\nchat_id: {message.chat.id}, values: {values_sql}"
                 )
         await state.finish()
-
 
     except ValueError:
         await message.reply(f"Ошибка: {message.text} не является числом.\nЖду числа")
@@ -631,8 +641,8 @@ def register_handlers_admin(dp: Dispatcher):
                                                              or x.data.startswith('price ')),
                                        state=FSMAdmin.change)
     dp.register_message_handler(cm_change_end, state=FSMAdmin.change_end)
-    dp.register_message_handler(record_start_goods_exel, commands=['record_goods_exel'])
+    dp.register_message_handler(record_start_goods_exel, commands=['record_goods_excel'])
     dp.register_message_handler(record_end_goods_exel, content_types=['document'],
                                 state=FSMAdmin_record_start_goods_exel.start)
-    dp.register_message_handler(take_goods_exel, commands=['take_goods_exel'])
-    dp.register_message_handler(take_orders_exel, commands=['take_orders_exel'])
+    dp.register_message_handler(take_goods_exel, commands=['take_goods_excel'])
+    dp.register_message_handler(take_orders_exel, commands=['take_orders_excel'])

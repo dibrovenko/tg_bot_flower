@@ -3,3 +3,4 @@ from handlers import admin
 from handlers import collector
 from handlers import errors
 from handlers import other
+from handlers import client_order_end

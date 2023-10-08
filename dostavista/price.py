@@ -26,7 +26,8 @@ py_logger.addHandler(py_handler)
 
 
 
-async def calculate_price_dostavista(lat: float, lon: float, address: str, vehicle_type_id: int, available_points: list, ssl_context=None) -> dict:
+async def calculate_price_dostavista(lat: float, lon: float, address: str, vehicle_type_id: int,
+                                     available_points: list, ssl_context=None) -> dict:
     """
             функция, которая вычисляет стоимость доставки в dostavista на сегодня и на завтра
             :rtype: data_for_return - {
@@ -108,11 +109,10 @@ async def calculate_price_dostavista(lat: float, lon: float, address: str, vehic
 
         if now.minute < 15:
             rounded_time = now.replace(minute=0, second=0, microsecond=0)
-        elif now.minute < 45:
+        elif now.minute < 45 or now.hour == 23:
             rounded_time = now.replace(minute=30, second=0, microsecond=0)
         else:
             rounded_time = now.replace(minute=0, second=0, microsecond=0) + datetime.timedelta(hours=1)
-
 
         if rounded_time.hour < 19 or (rounded_time.hour == 19 and rounded_time.minute == 0):
             while rounded_time.hour < 19 or (rounded_time.hour == 19 and rounded_time.minute == 0):

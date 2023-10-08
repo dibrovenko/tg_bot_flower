@@ -138,9 +138,9 @@ async def set_admin_commands(message: types.Message):
         types.BotCommand(command="/start", description="перезапустить бота"),
         types.BotCommand(command="/client", description="клиенский интерфейс"),
         types.BotCommand(command="/collector", description="интерфейс сборщика"),
-        types.BotCommand(command="/record_goods_exel", description="изменить данные товаров с Exel"),
-        types.BotCommand(command="/take_goods_exel", description="получить данные товаров с Exel"),
-        types.BotCommand(command="/take_orders_exel", description="получить данные о заказах с Exel")
+        types.BotCommand(command="/record_goods_excel", description="изменить данные товаров с Exel"),
+        types.BotCommand(command="/take_goods_excel", description="получить данные товаров с Exel"),
+        types.BotCommand(command="/take_orders_excel", description="получить данные о заказах с Exel")
     ]
     scope = BotCommandScopeChat(chat_id=message.chat.id)
     await bot.set_my_commands(bot_commands, scope=scope)
@@ -151,7 +151,7 @@ async def set_collectors_commands(message: types.Message):
         types.BotCommand(command="/start", description="перезапустить бота"),
         types.BotCommand(command="/client", description="клиенский интерфейс"),
         types.BotCommand(command="/admin", description="admin интерфейс"),
-        types.BotCommand(command="/take_orders_exel", description="получить данные о заказах с Exel")
+        types.BotCommand(command="/take_orders_excel", description="получить данные о заказах с Exel")
     ]
     scope = BotCommandScopeChat(chat_id=message.chat.id)
     await bot.set_my_commands(bot_commands, scope=scope)

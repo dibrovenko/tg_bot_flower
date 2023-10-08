@@ -13,9 +13,10 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram import Dispatcher
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ContentType, ChatActions
 
-from create_bot import dp, bot, types
+from create_bot import dp, bot, types, scheduler
 from dostavista.make_order import dostavista_make_order
 from dostavista.price import calculate_price_dostavista
+from handlers.collector import start_colllect
 from keyboards import kb_client, kb_client_registration, kb_client_registration_name, kb_admin
 
 from handlers.other import set_client_commands, set_admin_commands, delete_messages, find_best_way, delivery_time, \
@@ -807,7 +808,7 @@ async def cm_way_of_delivery_registration(callback: types.CallbackQuery, state: 
                                 '\n' + comment_courier +
                                 '\n' + comment_collector,
                     payload='Payment through a bot',
-                    provider_token="401643678:TEST:56720fb5-8502-455b-bf0a-eff6e5509273",
+                    provider_token="1832575495:TEST:7c29b12f7e10934587f4fb916e9c9f7132b78b906450252446b4a4659a83f0a1",
                     currency='rub',
                     prices=[
                         types.LabeledPrice(
@@ -974,7 +975,7 @@ async def cm_way_of_delivery_registration(callback: types.CallbackQuery, state: 
                                                        '\n' + comment_courier +
                                 '\n' + comment_collector,
                     payload='Payment through a bot',
-                    provider_token="401643678:TEST:56720fb5-8502-455b-bf0a-eff6e5509273",
+                    provider_token="1832575495:TEST:7c29b12f7e10934587f4fb916e9c9f7132b78b906450252446b4a4659a83f0a1",
                     currency='rub',
                     prices=[
                         types.LabeledPrice(
@@ -1059,7 +1060,7 @@ async def pre_checkout_query_false(pre_checkout_q: types.PreCheckoutQuery, state
 
 # successful payment
 # @dp.message_handler(content_types=types.ContentType.SUCCESSFUL_PAYMENT, state=FSMRegistration.payment)
-@dec_error_mes_state_pay
+#@dec_error_mes_state_pay
 async def successful_payment(message: types.Message, state: FSMContext):
     py_logger.info(f"State: {await state.get_state()} \n message: {message}, chat_id: {message.chat.id}")
     global collectors
@@ -1103,7 +1104,7 @@ async def successful_payment(message: types.Message, state: FSMContext):
 
             # это для теста
             # отменяем заказ у yandex
-            asyncio.create_task(cancellation_order(id=data['result_calculate_price_yandex'][2]))
+            #asyncio.create_task(cancellation_order(id=data['result_calculate_price_yandex'][2]))
 
         elif data['way_of_delivery'] == "Today":
             py_logger.info(f"State: {await state.get_state()} \n data['way_of_delivery'] == Today,"
@@ -1130,14 +1131,15 @@ async def successful_payment(message: types.Message, state: FSMContext):
                                           phone=data["phone2"], comment=data["comment_courier"],
                                           time_client_delivery=data["time_delivery_sql"],
                                           point_start_delivery=data["point_start_delivery"]))
-                info_delivery = await task_make_order
-                if task_make_order is None:
+                if await task_make_order is None:
+                    py_logger.debug(True)
                     raise Exception
+                else:
+                    info_delivery = await task_make_order
 
             except Exception as e:
-                info_delivery["number"] = str(uuid.uuid4())
-                info_delivery["status"] = info_delivery["tracking_url_collector"] = \
-                    info_delivery["tracking_url_client"] = None
+                info_delivery = {"number": str(uuid.uuid4()), "status": "будет позже",
+                                 "tracking_url_collector": "будет позже", "tracking_url_client": "будет позже"}
 
                 await bot.send_message(chat_id=collectors[data['point_start_delivery']][0],
                                        text=f"Номер:{info_delivery['number']} Проблема с закзаом у достависта, напишите"
@@ -1172,18 +1174,20 @@ async def successful_payment(message: types.Message, state: FSMContext):
                                           phone=data["phone2"], comment=data["comment_courier"],
                                           time_client_delivery=data["time_delivery_sql"],
                                           point_start_delivery=data["point_start_delivery"]))
-                info_delivery = await task_make_order
-                if task_make_order is None:
+                if await task_make_order is None:
+                    py_logger.debug(True)
                     raise Exception
+                else:
+                    info_delivery = await task_make_order
 
             except Exception as e:
-                info_delivery["number"] = str(uuid.uuid4())
-                info_delivery["status"] = info_delivery["tracking_url_collector"] = \
-                    info_delivery["tracking_url_client"] = None
+                py_logger.debug(collectors[data['point_start_delivery']][0])
+                info_delivery = {"number": str(uuid.uuid4()), "status": "будет позже",
+                                 "tracking_url_collector": "будет позже", "tracking_url_client": "будет позже"}
                 await bot.send_message(chat_id=collectors[data['point_start_delivery']][0],
                                        text=f"Номер:{info_delivery['number']} Проблема с закзаом у достависта, напишите"
                                             f" срочно админу, State: {await state.get_state()} \n "
-                                            f"data['way_of_delivery'] == Today, chat_id: {message.chat.id}, "
+                                            f"data['way_of_delivery'] == Tomorrow, chat_id: {message.chat.id}, "
                                             f"Exception: {e}")
 
                 py_logger.error(f"Проблема с закзаом у достависта, State: {await state.get_state()} "
@@ -1213,7 +1217,7 @@ async def successful_payment(message: types.Message, state: FSMContext):
                       '\nСсылка на доставку: ' + tracking_url_client + \
                       '\n' + comment_courier + \
                       '\n' + comment_collector
-
+    py_logger.debug(description)
     msg = await bot.send_message(message.chat.id, text=description, reply_markup=kb_client_order_inline)
     await bot.pin_chat_message(chat_id=msg.chat.id, message_id=msg.message_id)
     async with state.proxy() as data:
@@ -1221,18 +1225,19 @@ async def successful_payment(message: types.Message, state: FSMContext):
         columns_sql = ["number", "name_english", "name", "quantity", "delivery_cost", "flower_cost", "pack_cost",
                        "discount", "promo_code", "full_cost", "name_client", "phone_client", "name_tg_client",
                        "chat_id_client", "phone_client2", "address", "way_of_delivery", "time_delivery",
-                       "link_collector", "link_client", "comment_courier", "comment_collector", "message_id_client",
-                       "message_id_collector", "status_order", "step_collector", "point_start_delivery", "mark"]
+                       "time_delivery_end", "link_collector", "link_client", "comment_courier", "comment_collector",
+                       "message_id_client", "message_id_collector", "status_order", "step_collector",
+                       "point_start_delivery", "mark"]
 
         values_sql = [str(info_delivery["number"]), data["name_english"], data["name"], data["quantity"],
                       data["price_delivery_final"], data["cost_flower"], data['packaging_price'], data['discount'],
                       data['promo_code'],
                       (data['full_cost_without_delivery'] - data['discount'] + data["price_delivery_final"]),
                       data['name_real'], data["phone"], data['name_tg'], message.chat.id, data["phone2"],
-                      data["address"], data["way_of_delivery"], data["time_delivery_sql"],
-                      info_delivery["tracking_url_collector"], info_delivery["tracking_url_client"],
-                      data["comment_courier"], data["comment_collector"], msg.message_id, None, info_delivery["status"],
-                      "waiting", data["point_start_delivery"], None]
+                      data["address"], data["way_of_delivery"], data["time_delivery_sql"], data["time_delivery_sql"] +
+                      dt.timedelta(hours=1), info_delivery["tracking_url_collector"],
+                      info_delivery["tracking_url_client"], data["comment_courier"], data["comment_collector"],
+                      msg.message_id, None, info_delivery["status"], "waiting", data["point_start_delivery"], None]
 
         result_record = await add_positions_sql(table_name="orders", columns=columns_sql, values=values_sql)
 
@@ -1251,6 +1256,16 @@ async def successful_payment(message: types.Message, state: FSMContext):
                                    text=f"Новый заказ!\n{time}! \n{data['name']}\nНомер: {str(info_delivery['number'])}"
                                         f"\nТочка отправления: {data['point_start_delivery']}")
 
+        # формируем уведовление сборщику за час до прибытия курьера
+        if data["time_delivery_sql"] - dt.timedelta(hours=2) < dt.datetime.now():
+            run_date = dt.datetime.now()
+        else:
+            run_date = data["time_delivery_sql"] - dt.timedelta(hours=2)
+
+        py_logger.info(f"run_date: {run_date}")
+        scheduler.add_job(start_colllect, "date", run_date=run_date,
+                          args=(collectors[data['point_start_delivery']][0], str(info_delivery["number"])),
+                          id=str(info_delivery["number"]))
     await state.finish()
 
 

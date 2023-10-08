@@ -1,5 +1,7 @@
+import asyncio
+
 from aiogram.utils import executor
-from create_bot import dp, bot
+from create_bot import dp, bot, scheduler
 from data_base import sqlite_dp
 from aiogram import types, Dispatcher, Bot
 
@@ -9,6 +11,8 @@ from dotenv import load_dotenv, find_dotenv
 import logging
 from fastapi import FastAPI
 import sentry_sdk
+
+from dostavista.catching_answers_from import catch_answer_from_dostavista
 
 sentry_sdk.init(
   dsn="https://7545c747e68a60a25d8634ac9a82ed4e@o4505706547314688.ingest.sentry.io/4505710368063488",
@@ -53,7 +57,30 @@ async def on_startup():
     if webhook_info.url != WEBHOOK_URL:
         await bot.set_webhook(url=WEBHOOK_URL)
     await sqlite_dp.sql_start()
+    scheduler.start()
     py_logger.info(f"Bot online {__name__}...")
+
+
+@app.post("/dostavista")
+async def catch_dostavista(update: dict):
+    py_logger.info(update)
+    asyncio.create_task(catch_answer_from_dostavista(update))
+    return 200, "ok"
+
+
+@app.post("/yandex{info}")
+async def catch_yandex(info, update: dict):
+    py_logger.info("catch_yandex")
+    py_logger.info(info)
+    py_logger.info(update)
+    return 200, "ok"
+
+
+@app.post("/yandex")
+async def catch_yandex2(update: dict):
+    py_logger.info("catch_yandex2")
+    py_logger.info(update)
+    return 200, "ok"
 
 
 @app.post(WEBHOOK_PATH)

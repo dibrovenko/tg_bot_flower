@@ -38,7 +38,7 @@ async def calculate_price_yandex(lat: float, lon: float, address: str, available
     :param comment_client:
     """
     try:
-        now = datetime.datetime.now() - datetime.timedelta(hours=15) #- datetime.timedelta(minutes=20)
+        now = datetime.datetime.now() #- datetime.timedelta(hours=15) #- datetime.timedelta(minutes=20)
         if now.hour < 9 or now.hour > 19:
             py_logger.info(f"calculate_price_yandex data_for_return: {[False]}")
             return [False]
@@ -106,7 +106,7 @@ async def calculate_price_yandex(lat: float, lon: float, address: str, available
         data = {
 
             "callback_properties": {
-                "callback_url": "https://test.pavel0dibr.repl.co/updated_ts=&"
+                "callback_url": "https://ddb6-212-34-48-24.ngrok-free.app/yandex"
             },
             "client_requirements": {
                 "pro_courier": False,
@@ -179,6 +179,7 @@ async def calculate_price_yandex(lat: float, lon: float, address: str, available
             async with session.post(url, headers=headers, json=data) as response:
                 # Обработка ответа здесь
                 res_json = await response.json()
+                py_logger.info(f"создание заявки: {res_json}")
                 min_value_list.append(res_json["id"])
 
         py_logger.info(f"calculate_price_yandex data_for_return: {min_value_list}")
