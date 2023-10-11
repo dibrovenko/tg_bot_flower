@@ -38,7 +38,9 @@ async def calculate_price_yandex(lat: float, lon: float, address: str, available
     :param comment_client:
     """
     try:
-        now = datetime.datetime.now() #- datetime.timedelta(hours=15) #- datetime.timedelta(minutes=20)
+        now = datetime.datetime.now() #- datetime.timedelta(hours=5) #- datetime.timedelta(minutes=20)
+        NGROK_TUNNEL_URL = os.getenv('NGROK_TUNNEL_URL')
+
         if now.hour < 9 or now.hour > 19:
             py_logger.info(f"calculate_price_yandex data_for_return: {[False]}")
             return [False]
@@ -71,6 +73,8 @@ async def calculate_price_yandex(lat: float, lon: float, address: str, available
             data = {
 
                 "requirements": {
+                    "pro_courier": False,
+                    "cargo_options": ["auto_courier"],
                     "taxi_class": "express"
                 },
                 "route_points": [
@@ -104,12 +108,12 @@ async def calculate_price_yandex(lat: float, lon: float, address: str, available
 
         # Тело запроса
         data = {
-
             "callback_properties": {
-                "callback_url": "https://ddb6-212-34-48-24.ngrok-free.app/yandex"
+                "callback_url": f"{NGROK_TUNNEL_URL}/yandex"
             },
             "client_requirements": {
                 "pro_courier": False,
+                "cargo_options": ["auto_courier"],
                 "taxi_class": "express"
             },
             "comment": "доставка цветов",
@@ -117,10 +121,6 @@ async def calculate_price_yandex(lat: float, lon: float, address: str, available
             "emergency_contact": {
                 "name": new_dict_start_point[f"{min_value_list[1]}"]["name"],
                 "phone": new_dict_start_point[f"{min_value_list[1]}"]["phone"]
-            },
-
-            "client_requirements": {
-                "taxi_class": "express"
             },
 
             "items": [{

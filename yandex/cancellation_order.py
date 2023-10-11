@@ -30,3 +30,5 @@ async def cancellation_order(id: str):
         async with session.post(url, headers=headers, json=data) as response:
             # Обработка ответа здесь
             res_json = await response.json()
+            return res_json
+

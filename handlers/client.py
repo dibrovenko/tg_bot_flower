@@ -16,7 +16,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ContentTyp
 from create_bot import dp, bot, types, scheduler
 from dostavista.make_order import dostavista_make_order
 from dostavista.price import calculate_price_dostavista
-from handlers.collector import start_colllect
+from handlers.collector import start_colllect, start_colllect_yandex
 from keyboards import kb_client, kb_client_registration, kb_client_registration_name, kb_admin
 
 from handlers.other import set_client_commands, set_admin_commands, delete_messages, find_best_way, delivery_time, \
@@ -1263,9 +1263,13 @@ async def successful_payment(message: types.Message, state: FSMContext):
             run_date = data["time_delivery_sql"] - dt.timedelta(hours=2)
 
         py_logger.info(f"run_date: {run_date}")
-        scheduler.add_job(start_colllect, "date", run_date=run_date,
-                          args=(collectors[data['point_start_delivery']][0], str(info_delivery["number"])),
-                          id=str(info_delivery["number"]))
+        if data['way_of_delivery'] == "Express":
+            await start_colllect_yandex(chat_id=collectors[data['point_start_delivery']][0],
+                                        number_order=str(info_delivery["number"]))
+        else:
+            scheduler.add_job(start_colllect, "date", run_date=run_date,
+                              args=(collectors[data['point_start_delivery']][0], str(info_delivery["number"])),
+                              id=str(info_delivery["number"]))
     await state.finish()
 
 

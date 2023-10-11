@@ -29,6 +29,7 @@ collector_list = [value[0] for value in collectors.values()]
 
 async def estimate_order_start(chat_id_client, message_id_client, order_number):
     await bot.unpin_chat_message(chat_id=chat_id_client, message_id=message_id_client)
+    await bot.edit_message_reply_markup(chat_id=chat_id_client, message_id=message_id_client)
     keyboard = types.InlineKeyboardMarkup(row_width=5)
     keyboard.add(
         types.InlineKeyboardButton(text="😡", callback_data=f"est 1 {order_number}"),
@@ -58,8 +59,6 @@ async def estimate_order_end(callback: types.CallbackQuery):
             await bot.send_message(chat_id=chat_id_admin,
                                    text=f"Клиент @{sql_order[0][0]} оставил негативную оценку {mark}."
                                         f" Номер заказа: {number_order}")
-
-
 
 
 def register_handlers_client_order_end(dp: Dispatcher):

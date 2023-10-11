@@ -1,7 +1,6 @@
 import asyncio
-import time
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 import datetime
 from typing import List, Optional
 import os
@@ -167,11 +166,11 @@ async def catch_answer_from_dostavista(data: dict):
             if update.delivery.courier is not None:
                 if update.delivery.courier.name != sql_data[0][3] or update.delivery.courier.name != sql_data[0][4]:
                     await update_positions_sql(table_name="orders",
-                                               column_values={"courier_name": sql_data[0][3],
-                                                              "courier_phone": sql_data[0][4]},
+                                               column_values={"courier_name": update.delivery.courier.name,
+                                                              "courier_phone": update.delivery.courier.phone},
                                                condition=f"WHERE number = '{str(update.delivery.order_id)}'")
-                    text += "Курьера 📞: " + update.delivery.courier.phone + "\n"
-                    text += "Имя курьера : " + update.delivery.courier.name + "\n"
+                text += "Курьера 📞: " + update.delivery.courier.phone + "\n"
+                text += "Имя курьера : " + update.delivery.courier.name + "\n"
 
             if update.delivery.required_start_datetime.replace(tzinfo=None) != sql_data[0][2] or \
                     update.delivery.required_finish_datetime.replace(tzinfo=None) != sql_data[0][-3]:
@@ -242,7 +241,8 @@ async def catch_answer_from_dostavista(data: dict):
             text += dostavista_status["Order"][update.order.status] + "\n"
 
             if update.order.points[1].address != sql_data[0][1]:
-                await update_positions_sql(table_name="orders", column_values={"status_order": sql_data[0][1]},
+                await update_positions_sql(table_name="orders",
+                                           column_values={"status_order": update.order.points[1].address},
                                            condition=f"WHERE number = '{str(update.order.order_id)}'")
 
                 await bot.send_message(chat_id=collectors[sql_data[0][5]][0],
@@ -250,13 +250,13 @@ async def catch_answer_from_dostavista(data: dict):
                                             f"финальной точки, решайте проблему")
 
             if update.order.courier is not None:
-                if update.order.courier.name != sql_data[0][3] or update.order.courier.name != sql_data[0][4]:
+                if update.order.courier.name != sql_data[0][3] or update.order.courier.phone != sql_data[0][4]:
                     await update_positions_sql(table_name="orders",
-                                               column_values={"courier_name": sql_data[0][3],
-                                                              "courier_phone": sql_data[0][4]},
+                                               column_values={"courier_name": update.order.courier.name,
+                                                              "courier_phone": update.order.courier.phone},
                                                condition=f"WHERE number = '{str(update.order.order_id)}'")
-                    text += "Курьера 📞: " + update.order.courier.phone + "\n"
-                    text += "Имя курьера : " + update.order.courier.name + "\n"
+                text += "Курьера 📞: " + update.order.courier.phone + "\n"
+                text += "Имя курьера: " + update.order.courier.name + "\n"
 
             # проверка, что время доставки не изменилось
             if update.order.points[1].required_start_datetime.replace(tzinfo=None) != sql_data[0][2] or \
