@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime
 from pydantic import BaseModel
 from typing import List, Optional
@@ -65,6 +66,8 @@ async def catch_answer_from_yandex(data: dict):
         py_logger.error(e)
         return
 
+    # задержка, чтобы остальные данные обновились
+    await asyncio.sleep(0.5)
     # проверяем что заказ существует в нашей базе данных
     sql_data = await get_positions_sql("status_order", "address", "time_delivery", "courier_name",
                                        "courier_phone", "point_start_delivery", "message_id_client2",
@@ -72,16 +75,15 @@ async def catch_answer_from_yandex(data: dict):
                                        "message_id_client", "message_id_collector", "link_collector", "link_client",
                                        table_name="orders", condition="WHERE number = $1",
                                        condition_value=str(update.claim_id))
-    py_logger.info(f"sql_data: {sql_data[0]}")
-    if sql_data is not None:
-
+    py_logger.info(f"sql_data: {sql_data}")
+    if sql_data is not None and sql_data:
         # выходим из функции, если уже статус закзаа: отменен, завершен
-        if sql_data[0][0] in ["ourselves", "performer_not_found", "estimating_failed", "delivered_finish",
+        if sql_data[0][0] in ["ourselves", "delivered", "performer_not_found", "estimating_failed", "delivered_finish",
                               "returned_finish", "cancelled_with_payment", "cancelled"]:
             return
 
         # запускаем функцию оценки пользователем заказа, если он завершен
-        if update.status in ["delivered_finish", "returned_finish", "cancelled_with_payment", "cancelled"]:
+        if update.status in ["delivered_finish", "delivered", "returned_finish", "cancelled_with_payment", "cancelled"]:
             py_logger.debug("заказ завершен")
             await estimate_order_start(chat_id_client=sql_data[0][8], order_number=update.claim_id,
                                        message_id_client=sql_data[0][10])
@@ -128,7 +130,7 @@ async def catch_answer_from_yandex(data: dict):
         if link_client != sql_data[0][0] or link_collector != sql_data[0][0]:
             await update_positions_sql(table_name="orders", column_values={"link_collector": link_collector,
                                                                            "link_client": link_client},
-                                       condition=f"WHERE number = '{str(update.delivery.order_id)}'")
+                                       condition=f"WHERE number = '{update.claim_id}'")
 
         # отправляем инфу клиенту
         if sql_data[0][6] is None:
@@ -154,4 +156,3 @@ async def catch_answer_from_yandex(data: dict):
                                             text=text+link_collector)
             except:
                 pass
-

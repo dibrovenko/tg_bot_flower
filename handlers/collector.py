@@ -14,7 +14,7 @@ from data_base.sqlite_dp import get_positions_sql, update_positions_sql
 from error_decorators.admin import dec_error_mes, dec_error_mes_state
 from handlers.other import set_collectors_commands, delete_messages
 from keyboards.collector_kb import kb_collector
-from parameters import collectors, admins, dostavista_status, info_start_point
+from parameters import collectors, admins, dostavista_status, info_start_point, yandex_status
 
 import logging
 
@@ -122,19 +122,17 @@ async def load_photo_end(message: types.Message, state: FSMContext):
         text2 = "(◕‿◕) "
         py_logger.debug(f"sql_data load_photo_end {order_info}")
         if order_info[0][-1] == "Express":
-            text2 += "Курьер назначен и уже отправляется за цветами!\n"
+            text2 += yandex_status[order_info[0][2]] + "\n"
             text2 += "Ссылка на доставку : " + str(order_info[0][-2]) + "\n"
         else:
             try:
-                py_logger.debug(f"Delivery {order_info[0][2]}")
                 text2 += dostavista_status["Delivery"][order_info[0][2]] + "\n"
             except:
-                py_logger.debug("Order")
                 text2 += dostavista_status["Order"][order_info[0][2]] + "\n"
 
-        py_logger.debug("имя курьера")
         if order_info[0][4] is not None:
             text2 += "Курьера 📞: " + str(order_info[0][4]) + "\n"
+        if order_info[0][3] is not None:
             text2 += "Имя курьера : " + str(order_info[0][3]) + "\n"
 
         msg2 = await msg.reply(text=text2)

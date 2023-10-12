@@ -16,6 +16,7 @@ from data_base.sqlite_dp import get_positions_sql, add_positions_sql, \
     del_positions_sql, update_positions_sql, export_to_excel, notifications_start, update_database_from_excel
 from handlers.other import set_admin_dell_commands, check_valid_text, set_admin_commands, delete_messages
 from error_decorators.admin import dec_error_mes, dec_error_mes_state, dec_error_callback_state
+from keyboards.collector_kb import kb_collector
 from parameters import admins
 
 
@@ -38,6 +39,20 @@ py_logger.addHandler(py_handler)
 
 admins_list = [value[0] for value in admins.values()]
 notifications_start_var = True
+
+
+# Обработчик кнопки Заказы 📦
+# @dp.message_handler(IDFilter(admins_list), filters.Text(equals='Заказы 📦'))
+@dec_error_mes
+async def orders_pressed(message: types.Message):
+    await message.answer("Внизу появились кнопки, связанные с заказами. Чтобы вернуться назад, /admin", reply_markup=kb_collector)
+
+
+# Обработчик кнопки 'Аналитика 📊'
+# @dp.message_handler(IDFilter(admins_list), filters.Text(equals='Аналитика 📊'))
+@dec_error_mes
+async def analytics_pressed(message: types.Message):
+    await message.answer("еще в разработке 🧑‍💻")
 
 
 # Обработчик команды /take_goods_exel
@@ -609,40 +624,46 @@ async def cm_change_end(message: types.Message, state: FSMContext):
 def register_handlers_admin(dp: Dispatcher):
     dp.register_message_handler(commands_Admin, IDFilter(admins_list), commands=['admin'])
 
-    dp.register_message_handler(cm_start, commands='Добавить_товар', state=None)
-    dp.register_message_handler(cancel_handler, state="*", commands='отмена')
-    dp.register_message_handler(cancel_handler, filters.Text(equals='отмена', ignore_case=True), state="*")
-    dp.register_message_handler(stop_load_photo, state=FSMAdmin.photo, commands='загрузить')
-    dp.register_message_handler(load_photo, content_types=['photo'], state=FSMAdmin.photo)
-    dp.register_message_handler(load_name, state=FSMAdmin.name)
-    dp.register_message_handler(load_english_name, state=FSMAdmin.name_english)
+    dp.register_message_handler(cm_start, IDFilter(admins_list), filters.Text(equals='Добавить товар'), state=None)
+    dp.register_message_handler(cancel_handler, IDFilter(admins_list), state="*", commands='отмена')
+    dp.register_message_handler(cancel_handler, IDFilter(admins_list), filters.Text(equals='отмена', ignore_case=True),
+                                state="*")
+    dp.register_message_handler(stop_load_photo, IDFilter(admins_list), state=FSMAdmin.photo, commands='загрузить')
+    dp.register_message_handler(load_photo, IDFilter(admins_list), content_types=['photo'], state=FSMAdmin.photo)
+    dp.register_message_handler(load_name, IDFilter(admins_list), state=FSMAdmin.name)
+    dp.register_message_handler(load_english_name, IDFilter(admins_list), state=FSMAdmin.name_english)
     dp.register_callback_query_handler(
-        load_category, lambda c: c.data in ["Монобукеты", "Авторские_букеты", "Цветы_в_коробке"],
+        load_category, lambda c: c.data in ["Монобукеты", "Авторские_букеты", "Цветы_в_коробке"], IDFilter(admins_list),
         state=FSMAdmin.category)
-    dp.register_callback_query_handler(load_subcategory, lambda c: c.data in subcategory,
+    dp.register_callback_query_handler(load_subcategory, lambda c: c.data in subcategory, IDFilter(admins_list),
                                        state=FSMAdmin.subcategory)
-    dp.register_message_handler(load_description, state=FSMAdmin.description)
-    dp.register_message_handler(load_quantity1, state=FSMAdmin.quantity1)
-    dp.register_message_handler(load_quantity2, state=FSMAdmin.quantity2)
-    dp.register_message_handler(load_quantity3, state=FSMAdmin.quantity3)
-    dp.register_callback_query_handler(load_visibility,
+    dp.register_message_handler(load_description, IDFilter(admins_list), state=FSMAdmin.description)
+    dp.register_message_handler(load_quantity1, IDFilter(admins_list), state=FSMAdmin.quantity1)
+    dp.register_message_handler(load_quantity2, IDFilter(admins_list), state=FSMAdmin.quantity2)
+    dp.register_message_handler(load_quantity3, IDFilter(admins_list), state=FSMAdmin.quantity3)
+    dp.register_callback_query_handler(load_visibility, IDFilter(admins_list),
                                        lambda c: c.data in ["Да", "Нет"], state=FSMAdmin.visibility)
-    dp.register_message_handler(load_price, state=FSMAdmin.price)
+    dp.register_message_handler(load_price, IDFilter(admins_list), state=FSMAdmin.price)
 
-    dp.register_message_handler(cm_start_delete, commands='Удалить_товар', state=None)
-    dp.register_message_handler(cm_show_delete, state=FSMAdmin.show_delete)
-    dp.register_callback_query_handler(cm_delete, lambda x: x.data and x.data.startswith('del '), state=FSMAdmin.delete)
+    dp.register_message_handler(cm_start_delete, IDFilter(admins_list), filters.Text(equals='Удалить товар'),
+                                state=None)
+    dp.register_message_handler(cm_show_delete, IDFilter(admins_list), state=FSMAdmin.show_delete)
+    dp.register_callback_query_handler(cm_delete, lambda x: x.data and x.data.startswith('del '), IDFilter(admins_list),
+                                       state=FSMAdmin.delete)
 
-    dp.register_message_handler(cm_start_change, commands='Изменить_товар', state=None)
-    dp.register_message_handler(cm_show_change, state=FSMAdmin.show_change)
-    dp.register_callback_query_handler(cm_change,
+    dp.register_message_handler(cm_start_change, IDFilter(admins_list), filters.Text(equals='Изменить товар'),
+                                state=None)
+    dp.register_message_handler(cm_show_change, IDFilter(admins_list), state=FSMAdmin.show_change)
+    dp.register_callback_query_handler(cm_change, IDFilter(admins_list),
                                        lambda x: x.data and (x.data.startswith('visibility ')
                                                              or x.data.startswith('quantity')
                                                              or x.data.startswith('price ')),
                                        state=FSMAdmin.change)
-    dp.register_message_handler(cm_change_end, state=FSMAdmin.change_end)
-    dp.register_message_handler(record_start_goods_exel, commands=['record_goods_excel'])
-    dp.register_message_handler(record_end_goods_exel, content_types=['document'],
+    dp.register_message_handler(cm_change_end, IDFilter(admins_list), state=FSMAdmin.change_end)
+    dp.register_message_handler(record_start_goods_exel, IDFilter(admins_list), commands=['record_goods_excel'])
+    dp.register_message_handler(record_end_goods_exel, IDFilter(admins_list), content_types=['document'],
                                 state=FSMAdmin_record_start_goods_exel.start)
     dp.register_message_handler(take_goods_exel, commands=['take_goods_excel'])
     dp.register_message_handler(take_orders_exel, commands=['take_orders_excel'])
+    dp.register_message_handler(orders_pressed, IDFilter(admins_list), filters.Text(equals='Заказы 📦'))
+    dp.register_message_handler(analytics_pressed, IDFilter(admins_list), filters.Text(equals='Аналитика 📊'))

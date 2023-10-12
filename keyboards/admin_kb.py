@@ -1,11 +1,11 @@
 from aiogram.types import ReplyKeyboardMarkup, ReplyKeyboardRemove, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
-import emoji
 
-b1 = KeyboardButton(f"/Заказы{emoji.emojize(':clipboard:')}")
-b2 = KeyboardButton(f"/Аналитика{emoji.emojize(':chart_increasing:')}")
-b3 = KeyboardButton("/Добавить_товар")
-b4 = KeyboardButton("/Удалить_товар")
-b5 = KeyboardButton("/Изменить_товар")
+
+b1 = KeyboardButton(f"Заказы 📦")
+b2 = KeyboardButton(f"Аналитика 📊")
+b3 = KeyboardButton("Добавить товар")
+b4 = KeyboardButton("Удалить товар")
+b5 = KeyboardButton("Изменить товар")
 
 kb_admin = ReplyKeyboardMarkup(resize_keyboard=True)
 kb_admin.row(b1, b2).row(b3, b4).add(b5)
