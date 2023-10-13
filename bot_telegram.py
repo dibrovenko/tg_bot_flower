@@ -75,7 +75,7 @@ async def catch_dostavista(update: dict):
 async def catch_yandex(update: dict):
     py_logger.info("catch_yandex")
     py_logger.info(update)
-    asyncio.create_task(catch_answer_from_yandex(update))
+    await catch_answer_from_yandex(update)
     return 200, "ok"
 
 

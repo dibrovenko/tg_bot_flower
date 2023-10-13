@@ -67,7 +67,7 @@ async def catch_answer_from_yandex(data: dict):
         return
 
     # задержка, чтобы остальные данные обновились
-    await asyncio.sleep(0.5)
+    await asyncio.sleep(0.1)
     # проверяем что заказ существует в нашей базе данных
     sql_data = await get_positions_sql("status_order", "address", "time_delivery", "courier_name",
                                        "courier_phone", "point_start_delivery", "message_id_client2",

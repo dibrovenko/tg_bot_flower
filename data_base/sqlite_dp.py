@@ -40,10 +40,11 @@ async def connect_to_base():
 
 
 async def sql_start():
+    """"
     global base, cur
     base = sq.connect('flower_cool.db')
     cur = base.cursor()
-
+    """
     con = await connect_to_base()
     await con.execute(
         'CREATE TABLE IF NOT EXISTS goods(img TEXT, name TEXT PRIMARY KEY, name_english TEXT,'
