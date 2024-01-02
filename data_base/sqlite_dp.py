@@ -327,6 +327,8 @@ async def update_database_from_excel():
                 # Обновление данных в базе данных с использованием параметризованного запроса
                 await conn.executemany(f'UPDATE goods SET {column_name} = $1 WHERE name = $2;',
                                        zip(values, df['name'].tolist()))
+                py_logger.debug("ffffffff")
+                py_logger.info((f'UPDATE goods SET {column_name} = $1 WHERE name = $2;', values, df['name'].tolist()))
 
     except Exception as e:
         py_logger.error(f"функция update_database_from_excel не смогла обновить данные, Ошибка: {e}")

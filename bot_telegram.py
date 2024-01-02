@@ -28,7 +28,7 @@ app = FastAPI()
 
 # получение пользовательского логгера и установка уровня логирования
 py_logger = logging.getLogger(__name__)
-py_logger.setLevel(logging.INFO)
+py_logger.setLevel(logging.DEBUG)
 
 # настройка обработчика и форматировщика в соответствии с нашими нуждами
 log_file = os.path.join(f"log_directory/{__name__}.log")

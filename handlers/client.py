@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import uuid
 from datetime import datetime, timedelta
 import re
@@ -31,12 +32,12 @@ from yandex.adress import address_correctness_check
 from yandex.calculate_price_yandex import calculate_price_yandex
 from yandex.cancellation_order import cancellation_order
 from yandex.confirmation_order import confirmation_order
-from parameters import admins, collectors
 from yandex.get_lat_lon_from_address import get_lan_lon_from_addrees
 from error_decorators.client import dec_error_mes, dec_error_mes_state, dec_error_callback_state, \
     dec_error_mes_state_pay, dec_error_mes_state_collector
 
-import logging
+from parameters import admins, collectors
+from dotenv import load_dotenv, find_dotenv
 
 # получение пользовательского логгера и установка уровня логирования
 py_logger = logging.getLogger(__name__)
@@ -53,6 +54,10 @@ py_formatter = logging.Formatter("%(name)s %(asctime)s %(levelname)s %(message)s
 py_handler.setFormatter(py_formatter)
 # добавление обработчика к логгеру
 py_logger.addHandler(py_handler)
+
+# url для webhook
+load_dotenv(find_dotenv())
+PAYMENT_TOKEN = os.getenv('payment_token')
 
 admins_list = [value[0] for value in admins.values()]
 collector_list = [value[0] for value in collectors.values()]
@@ -808,7 +813,7 @@ async def cm_way_of_delivery_registration(callback: types.CallbackQuery, state: 
                                 '\n' + comment_courier +
                                 '\n' + comment_collector,
                     payload='Payment through a bot',
-                    provider_token="1832575495:TEST:7c29b12f7e10934587f4fb916e9c9f7132b78b906450252446b4a4659a83f0a1",
+                    provider_token=PAYMENT_TOKEN,
                     currency='rub',
                     prices=[
                         types.LabeledPrice(
@@ -975,7 +980,7 @@ async def cm_way_of_delivery_registration(callback: types.CallbackQuery, state: 
                                                        '\n' + comment_courier +
                                 '\n' + comment_collector,
                     payload='Payment through a bot',
-                    provider_token="1832575495:TEST:7c29b12f7e10934587f4fb916e9c9f7132b78b906450252446b4a4659a83f0a1",
+                    provider_token=PAYMENT_TOKEN,
                     currency='rub',
                     prices=[
                         types.LabeledPrice(

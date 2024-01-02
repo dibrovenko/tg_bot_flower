@@ -49,6 +49,9 @@ class FSMCYandex_wrong(StatesGroup):
     link = State()
 
 
+""" 
+    Кнопки соостояния сбощика 
+    """
 #@dp.callback_query_handler(lambda x: x.data and x.data.startswith('strtclllct '))
 @dec_error_mes
 async def press_start_collect(callback: types.CallbackQuery):
@@ -144,6 +147,7 @@ async def load_photo_end(message: types.Message, state: FSMContext):
     await state.finish()
 
 
+# показываем букет сборщику
 #@dp.callback_query_handler(lambda x: x.data and x.data.startswith('flw '))
 @dec_error_mes
 async def commands_show_flower(callback: types.CallbackQuery):
@@ -175,6 +179,10 @@ async def commands_show_flower(callback: types.CallbackQuery):
             await callback.message.answer("не получилось вывести информацию о букете")
     else:
         await callback.message.answer("не получилось вывести информацию о букете")
+
+""" 
+    Конец кнопок соостояния сбощика 
+    """
 
 
 async def start_colllect(chat_id: int, number_order: str):
@@ -270,7 +278,7 @@ async def start_colllect_yandex(chat_id: int, number_order: str):
         await update_positions_sql(table_name="orders", column_values={"message_id_collector": msg.message_id},
                                    condition=f"WHERE number = '{number_order}'")
         asyncio.create_task(control_step_collect(chat_id=chat_id, number_order=number_order, time=450))
-        #asyncio.create_task(control_step_yandex(number_order=number_order))
+        asyncio.create_task(control_step_yandex(number_order=number_order))
 
     else:
         py_logger.error(f"Ошибка: не смогли вытащить данные из базы данных о заказе {number_order}")
