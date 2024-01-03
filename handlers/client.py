@@ -17,7 +17,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ContentTyp
 from create_bot import dp, bot, types, scheduler
 from dostavista.make_order import dostavista_make_order
 from dostavista.price import calculate_price_dostavista
-from handlers.collector import start_colllect, start_colllect_yandex
+from handlers.order_from_collector import start_colllect, start_colllect_yandex
 from keyboards import kb_client, kb_client_registration, kb_client_registration_name, kb_admin
 
 from handlers.other import set_client_commands, set_admin_commands, delete_messages, find_best_way, delivery_time, \

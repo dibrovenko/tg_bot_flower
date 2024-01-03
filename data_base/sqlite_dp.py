@@ -115,9 +115,9 @@ async def get_positions_sql(*args: str, table_name: str, condition=None, conditi
 
         elif condition:
             query += " " + condition
-            py_logger.debug(f"query: {query}")
+            py_logger.debug(f"query condition: {query}")
             result = await con.fetch(query)
-            py_logger.debug(f"result: {result}")
+            py_logger.debug(f"result condition: {result}")
 
         else:
             py_logger.info(f"query: {query}")

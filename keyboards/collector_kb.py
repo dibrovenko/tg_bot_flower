@@ -3,7 +3,7 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 
 b1 = KeyboardButton(f"Сегодня")
 b2 = KeyboardButton('Завтра')
-b3 = KeyboardButton('Найти заказ')
+b3 = KeyboardButton('Найти заказ 🔎')
 b4 = KeyboardButton('Последние 5')
 
 kb_collector = ReplyKeyboardMarkup(resize_keyboard=True)
