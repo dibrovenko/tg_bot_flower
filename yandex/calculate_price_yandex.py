@@ -38,7 +38,7 @@ async def calculate_price_yandex(lat: float, lon: float, address: str, available
     :param comment_client:
     """
     try:
-        now = datetime.datetime.now() #- datetime.timedelta(hours=5) #- datetime.timedelta(minutes=20)
+        now = datetime.datetime.now()  - datetime.timedelta(hours=5) #- datetime.timedelta(minutes=20)
         NGROK_TUNNEL_URL = os.getenv('NGROK_TUNNEL_URL')
 
         if now.hour < 9 or now.hour > 19:

@@ -1,4 +1,5 @@
 import asyncio
+import time
 from datetime import datetime
 from pydantic import BaseModel
 from typing import List, Optional
@@ -56,6 +57,10 @@ class Claim(BaseModel):
     route_points: List[RoutePoint]
 
 
+# словарь, где хранятся статусы
+delta_time = {}
+
+
 async def catch_answer_from_yandex(data: dict):
     py_logger.info(data)
     # Валидация JSON
@@ -67,7 +72,12 @@ async def catch_answer_from_yandex(data: dict):
         return
 
     # задержка, чтобы остальные данные обновились
-    await asyncio.sleep(0.1)
+    global delta_time
+    if str(update.claim_id) in delta_time:
+        if delta_time[str(update.claim_id)] - time.time() < 0.2:
+            await asyncio.sleep(0.2)
+    delta_time[str(update.claim_id)] = time.time()
+
     # проверяем что заказ существует в нашей базе данных
     sql_data = await get_positions_sql("status_order", "address", "time_delivery", "courier_name",
                                        "courier_phone", "point_start_delivery", "message_id_client2",
@@ -87,6 +97,8 @@ async def catch_answer_from_yandex(data: dict):
             py_logger.debug("заказ завершен")
             await estimate_order_start(chat_id_client=sql_data[0][8], order_number=update.claim_id,
                                        message_id_client=sql_data[0][10])
+            # Удаление элемента из словаря, чтобы память не тратить
+            del delta_time[str(update.claim_id)]
 
         text = "(◕‿◕) "
         text += yandex_status[update.status] + "\n"

@@ -27,6 +27,7 @@ py_logger.addHandler(py_handler)
 # Flag variable to indicate if handle_notifications has been triggered
 notification_received = False
 
+
 async def connect_to_base():
     load_dotenv(find_dotenv())
     host = os.getenv('host_dp')
